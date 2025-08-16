@@ -1,10 +1,7 @@
 use std::fs::File;
 use std::io;
 use std::io::Read;
-
-pub mod lexer;
-pub mod ast;
-pub mod parser;
+use rty_compiler::lexer;
 
 fn main() {
     let lexer = lexer::Lexer::new();

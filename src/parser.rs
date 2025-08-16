@@ -1,5 +1,6 @@
 use crate::lexer::Token;
-use crate::ast::{BinaryOp, Expr, Stmt, Param};
+use crate::ast::{BinaryOp, Expr, Stmt, Param, Type};
+use crate::map_builtin_type;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseError {
@@ -181,7 +182,8 @@ impl Parser {
             | (Some(Token::AssignArrow), Token::AssignArrow)
             | (Some(Token::Function), Token::Function)
             | (Some(Token::Return), Token::Return)
-            | (Some(Token::EOF), Token::EOF) => true,
+            | (Some(Token::EOF), Token::EOF)
+            | (Some(Token::Newline), Token::Newline) => true,
             _ => false,
         }
     }
@@ -206,6 +208,10 @@ impl Parser {
             }
         }
     }
+
+    fn skip_newlines(&mut self) {
+        while self.match_token(&Token::Newline) {}
+    }
 }
 
 
@@ -216,8 +222,15 @@ impl Parser {
             if self.check(&Token::EOF) {
                 break;
             }
+            // allow and skip newlines between top-level statements
+            self.skip_newlines();
+            if self.check(&Token::EOF) {
+                break;
+            }
             let stmt = self.parse_statement()?;
             stmts.push(stmt);
+            // consume any trailing newlines after a statement
+            self.skip_newlines();
         }
         Ok(stmts)
     }
@@ -259,10 +272,18 @@ impl Parser {
 
     fn parse_block_after_lbrace(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut stmts = Vec::new();
+        // skip any leading newlines inside the block
+        self.skip_newlines();
         while !self.check(&Token::RBrace) && !self.check(&Token::EOF) {
+            // also handle possible blank lines between stmts
+            if self.check(&Token::RBrace) || self.check(&Token::EOF) { break; }
             let stmt = self.parse_statement()?;
             stmts.push(stmt);
+            // allow newlines between statements
+            self.skip_newlines();
         }
+        // allow trailing newlines before closing brace
+        self.skip_newlines();
         self.consume(&Token::RBrace)?;
         Ok(stmts)
     }
@@ -274,9 +295,18 @@ impl Parser {
             None => return Err(ParseError::Eof),
         };
         self.advance(); // consume identifier
+
+        let x_type = match self.peek() {
+            Some(Token::Colon) => {
+                self.consume(&Token::Colon)?;
+                Some(self.parse_x_type()?)
+            }
+            _ => return Err(ParseError::Eof)
+        };
+
         self.consume(&Token::AssignArrow)?;
         let value = self.parse_expression()?;
-        Ok(Stmt::VarAssign { name, value })
+        Ok(Stmt::VarAssign { name, x_type, value })
     }
 
     fn parse_function_def(&mut self) -> Result<Stmt, ParseError> {
@@ -301,11 +331,13 @@ impl Parser {
                 };
                 self.advance();
                 // optional type: ":" Type/Identifier
-                let mut pty: Option<String> = None;
-                if self.match_token(&Token::Colon) {
-                    pty = Some(self.parse_type_name()?);
-                }
-                params.push(Param { name: pname, ty: pty });
+
+                let x_type = if self.match_token(&Token::Colon) {
+                    self.parse_x_type()?
+                } else {
+                    return Err(ParseError::Expected);
+                };
+                params.push(Param { name: pname, ty: x_type });
                 if self.match_token(&Token::Comma) {
                     continue;
                 }
@@ -314,27 +346,25 @@ impl Parser {
         }
         self.consume(&Token::RParen)?;
         // optional return type
-        let mut ret_ty: Option<String> = None;
+        let mut ret_ty: Option<Type> = None;
         if self.match_token(&Token::Colon) {
-            ret_ty = Some(self.parse_type_name()?);
+            ret_ty = Some(self.parse_x_type()?);
         }
         self.consume(&Token::LBrace)?;
         let body = self.parse_block_after_lbrace()?;
         Ok(Stmt::FunctionDef { name, params, return_type: ret_ty, body })
     }
 
-    fn parse_type_name(&mut self) -> Result<String, ParseError> {
+    fn parse_x_type(&mut self) -> Result<Type, ParseError> {
         match self.peek() {
             Some(Token::Type(s)) => {
                 let t = s.clone();
                 self.advance();
-                Ok(t)
-            }
-            Some(Token::Identifier(s)) => {
-                // allow bare identifier as type name too
-                let t = s.clone();
-                self.advance();
-                Ok(t)
+                let x_type = map_builtin_type(&t);
+                match x_type {
+                    Some(value) => Ok(value),
+                    None => Err(ParseError::Expected)
+                }
             }
             Some(tok) => Err(ParseError::Unexpected(tok.clone())),
             None => Err(ParseError::Eof),
@@ -343,7 +373,8 @@ impl Parser {
 
     fn lookahead_is_assignment(&self) -> bool {
         matches!(self.peek(), Some(Token::Identifier(_)))
-            && matches!(self.peek_nth(1), Some(Token::AssignArrow))
+            && (matches!(self.peek_nth(1), Some(Token::AssignArrow))
+                || matches!(self.peek_nth(1), Some(Token::Colon)))
     }
 
     fn lookahead_is_function_def(&self) -> bool {

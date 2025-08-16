@@ -1,3 +1,5 @@
+use crate::is_builtin_type_name;
+
 pub struct Lexer {}
 
 
@@ -35,8 +37,11 @@ impl Lexer {
         while current < chars.len() {
             let c = match self.peek(&chars, current) { Some(ch) => ch, None => break };
 
-            // Skip whitespace (spaces, tabs, newlines, etc.)
+            // Handle whitespace: newlines become a distinct token, other whitespace is skipped
             if c.is_whitespace() {
+                if c == '\n' {
+                    tokens.push(Token::Newline);
+                }
                 self.consume(&chars, &mut current);
                 continue;
             }
@@ -115,9 +120,15 @@ impl Lexer {
                     match identifier_name.as_str() {
                         "function" => tokens.push(Token::Function),
                         "return" => tokens.push(Token::Return),
-                        // Treat built-in type names specially if desired
-                        "int" => tokens.push(Token::Type(identifier_name)),
-                        _ => tokens.push(Token::Identifier(identifier_name)),
+                        // Treat built-in type names specially
+                        _ => {
+                            if is_builtin_type_name(&identifier_name) {
+                                tokens.push(Token::Type(identifier_name))
+                            } else {
+                                tokens.push(Token::Identifier(identifier_name))
+                            }
+                        }
+
                     }
                     current = new_current; // already points to first non-ident char
                 }
@@ -201,10 +212,9 @@ pub enum Token {
     True,
     False,
     Inf,
-    Nan,
-    Na,
 
     // Special
+    Newline,
     EOF,
 }
 

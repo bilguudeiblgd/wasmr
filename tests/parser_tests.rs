@@ -1,6 +1,6 @@
 use rty_compiler::lexer::{Lexer, Token};
 use rty_compiler::parser::Parser;
-use rty_compiler::ast::{Expr, Stmt, BinaryOp, Param};
+use rty_compiler::ast::{Expr, Stmt, BinaryOp, Param, Type};
 
 fn lex_tokens(s: &str) -> Vec<Token> {
     let lexer = Lexer::new();
@@ -79,9 +79,10 @@ fn parse_call_and_grouping() {
 
 #[test]
 fn parse_assignment_statement() {
-    let stmt = parse_stmt("x <- 1:3");
+    let stmt = parse_stmt("x: int <- 1:3");
     let expected = Stmt::VarAssign {
         name: "x".into(),
+        x_type: Some(Type::Int),
         value: Expr::Binary {
             left: Box::new(Expr::Number("1".into())),
             op: BinaryOp::Range,
@@ -109,12 +110,12 @@ fn parse_return_with_and_without_parens() {
 #[test]
 fn parse_block_statement() {
     // No separators required based on our parser rules.
-    let stmt = parse_stmt("{ x <- 1 y <- 2 }");
+    let stmt = parse_stmt("{ x: int <- 1 y: int <- 2 }");
     match stmt {
         Stmt::Block(body) => {
             assert_eq!(body.len(), 2);
-            assert_eq!(body[0], Stmt::VarAssign { name: "x".into(), value: Expr::Number("1".into())});
-            assert_eq!(body[1], Stmt::VarAssign { name: "y".into(), value: Expr::Number("2".into())});
+            assert_eq!(body[0], Stmt::VarAssign { name: "x".into(), x_type: Some(Type::Int), value: Expr::Number("1".into())});
+            assert_eq!(body[1], Stmt::VarAssign { name: "y".into(), x_type: Some(Type::Int), value: Expr::Number("2".into())});
         }
         _ => panic!("expected block"),
     }
@@ -127,8 +128,8 @@ fn parse_function_definition_full() {
     match &prog[0] {
         Stmt::FunctionDef { name, params, return_type, body } => {
             assert_eq!(name, "f");
-            assert_eq!(params, &vec![Param { name: "x".into(), ty: Some("int".into()) }]);
-            assert_eq!(return_type, &Some("int".into()));
+            assert_eq!(params, &vec![Param { name: "x".into(), ty: Type::Int }]);
+            assert_eq!(return_type, &Some(Type::Int));
             assert_eq!(body.len(), 1);
             assert_eq!(body[0], Stmt::Return(Some(Expr::Binary {
                 left: Box::new(Expr::Identifier("x".into())),
@@ -142,8 +143,8 @@ fn parse_function_definition_full() {
 
 #[test]
 fn parse_program_multiple_statements() {
-    let prog = parse_program("a <- 1 b <- 2");
+    let prog = parse_program("a: int <- 1\nb: int <- 2");
     assert_eq!(prog.len(), 2);
-    assert_eq!(prog[0], Stmt::VarAssign { name: "a".into(), value: Expr::Number("1".into())});
-    assert_eq!(prog[1], Stmt::VarAssign { name: "b".into(), value: Expr::Number("2".into())});
+    assert_eq!(prog[0], Stmt::VarAssign { name: "a".into(), x_type: Some(Type::Int), value: Expr::Number("1".into())});
+    assert_eq!(prog[1], Stmt::VarAssign { name: "b".into(), x_type: Some(Type::Int), value: Expr::Number("2".into())});
 }
