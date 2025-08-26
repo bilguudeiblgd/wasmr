@@ -3,6 +3,7 @@ use ast::Type;
 pub mod lexer;
 pub mod ast;
 pub mod parser;
+pub mod codegen;
 
 /// Return true if identifier is a built-in type name the lexer should tag as Token::Type.
 pub fn is_builtin_type_name(name: &str) -> bool {

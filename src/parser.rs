@@ -219,9 +219,6 @@ impl Parser {
     pub fn parse_program(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut stmts = Vec::new();
         while !self.is_at_end() {
-            if self.check(&Token::EOF) {
-                break;
-            }
             // allow and skip newlines between top-level statements
             self.skip_newlines();
             if self.check(&Token::EOF) {

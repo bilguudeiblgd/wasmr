@@ -8,3 +8,4 @@ name = "rty_compiler"
 path = "src/lib.rs"
 
 [dependencies]
+wasm-encoder = "0.236.1"
