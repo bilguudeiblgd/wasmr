@@ -45,6 +45,31 @@ fn parse_expression_arithmetic_and_precedence() {
 }
 
 #[test]
+fn parse_function_call() {
+    let expr = parse_expr("f(1, 2)");
+    let expected = Expr::Call {
+        callee: Box::new(Expr::Identifier("f".into())),
+        args: vec![
+            Expr::Number("1".into()),
+            Expr::Number("2".into()),
+        ],
+    };
+    assert_eq!(expr, expected);
+}
+
+#[test]
+fn parse_hello_world() {
+    let expr = parse_expr("print(\"Hello world!\")");
+    let expected = Expr::Call {
+        callee: Box::new(Expr::Identifier("print".into())),
+        args: vec![
+            Expr::XString("Hello world!".into()),
+        ],
+    };
+    assert_eq!(expr, expected);   
+}
+
+#[test]
 fn parse_expression_comparison_and_range() {
     // 1:3 < 10
     let expr = parse_expr("1:3 < 10");

@@ -183,3 +183,13 @@ fn vector_scalar_ops() {
     ];
     assert_eq!(c, c_expected);
 }
+
+#[test]
+fn simple_string() {
+    let a = lex_str("\"bla bla\"");
+    let a_expected = vec![
+      Token::XString("bla bla".into()),
+      Token::EOF,  
+    ];
+    assert_eq!(a, a_expected);
+}

@@ -67,6 +67,9 @@ impl WasmGenerator {
                 // calls not yet supported
                 func.instruction(&Instruction::I32Const(0));
             }
+            Expr::XString(s) => {
+                func.instruction(&Instruction::I32Const(0));
+            }
             Expr::Grouping(inner) => self.gen_expr(func, inner),
         }
     }

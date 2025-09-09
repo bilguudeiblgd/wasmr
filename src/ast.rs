@@ -13,6 +13,7 @@ pub enum BinaryOp {
 pub enum Expr {
     Number(String),
     Identifier(String),
+    XString(String),
     Binary {
         left: Box<Expr>,
         op: BinaryOp,

@@ -9,3 +9,4 @@ path = "src/lib.rs"
 
 [dependencies]
 wasm-encoder = "0.236.1"
+wasmtime = "36.0.2"

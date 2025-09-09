@@ -130,7 +130,13 @@ impl Lexer {
                         }
 
                     }
-                    current = new_current; // already points to first non-ident char
+                    current = new_current; // already points to the first non-ident char
+                }
+                '"' => {
+                    self.consume(&chars, &mut current);
+                    let (str, new_current) = self.parse_string(&chars, current);
+                    tokens.push(Token::XString(str));
+                    current = new_current;
                 }
                 _ => {
                     // Unknown character: skip it for now
@@ -174,6 +180,22 @@ impl Lexer {
         }
         (ident_str, current)
     }
+
+    fn parse_string(&self, chars: &Vec<char>, start: usize) -> (String, usize) {
+        let mut str_str = String::new();
+        let mut current = start;
+        while let Some(ch) = self.peek(chars, current) {
+            if ch != '"' {
+                str_str.push(ch);
+                let _ = self.consume(chars, &mut current);
+            } else {
+                self.consume(chars, &mut current);
+                break;
+            }
+        }
+        (str_str, current)
+
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -199,6 +221,7 @@ pub enum Token {
     Identifier(String),
     Type(String),
     Number(String),
+    XString(String),
 
     // Keywords
     Function,

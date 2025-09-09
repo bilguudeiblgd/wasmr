@@ -138,6 +138,11 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Identifier(s))
             }
+            Some(Token::XString(s)) => {
+                let s = s.clone();
+                self.advance();
+                Ok(Expr::XString(s))
+            }
             Some(Token::LParen) => {
                 self.advance();
                 let expr = self.parse_expression()?;
