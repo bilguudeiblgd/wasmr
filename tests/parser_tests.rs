@@ -135,7 +135,7 @@ fn parse_return_with_and_without_parens() {
 #[test]
 fn parse_block_statement() {
     // No separators required based on our parser rules.
-    let stmt = parse_stmt("{ x: int <- 1 y: int <- 2 }");
+    let stmt = parse_stmt("{ x: int <- 1; y: int <- 2 }");
     match stmt {
         Stmt::Block(body) => {
             assert_eq!(body.len(), 2);
