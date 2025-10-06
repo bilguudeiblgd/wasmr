@@ -53,7 +53,7 @@ fn process_file(lexer: &lexer::Lexer, path: &Path) -> io::Result<PathBuf> {
     let mut parser = Parser::new(tokens);
     let program = match parser.parse_program() {
         Ok(p) => p,
-        Err(_e) => {
+        Err(e) => {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "parse error"));
         }
     };

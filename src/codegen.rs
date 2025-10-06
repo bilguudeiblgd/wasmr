@@ -1,4 +1,5 @@
-use wasm_encoder::{Module, CodeSection, Function, Instruction, ValType, FunctionSection, TypeSection, ExportSection, ExportKind, FuncType};
+use std::collections::HashMap;
+use wasm_encoder::{Module, CodeSection, Function, Instruction, ValType, FunctionSection, TypeSection, ExportSection, ExportKind};
 
 use crate::ast::{Stmt, Expr, BinaryOp, Type, Param};
 
@@ -11,7 +12,9 @@ pub struct WasmGenerator {
     functions: FunctionSection,
     exports: ExportSection,
     code: CodeSection,
-    // map for locals could be added later
+    // function registry
+    func_indices: HashMap<String, u32>,
+    func_count: u32,
 }
 
 impl WasmGenerator {
@@ -22,6 +25,8 @@ impl WasmGenerator {
             functions: FunctionSection::new(),
             exports: ExportSection::new(),
             code: CodeSection::new(),
+            func_indices: HashMap::new(),
+            func_count: 0,
         }
     }
 
@@ -35,16 +40,15 @@ impl WasmGenerator {
         }
     }
 
-    fn gen_expr(&self, func: &mut Function, expr: &Expr) {
+    fn gen_expr(&self, func: &mut Function, params: Vec<Param>, expr: &Expr) {
         match expr {
             Expr::Number(n) => {
-                // naive: parse as i32
                 let v: i32 = n.parse().unwrap_or(0);
                 func.instruction(&Instruction::I32Const(v));
             }
             Expr::Binary { left, op, right } => {
-                self.gen_expr(func, left);
-                self.gen_expr(func, right);
+                self.gen_expr(func, params.clone(), left);
+                self.gen_expr(func, params.clone(), right);
                 match op {
                     BinaryOp::Plus => { func.instruction(&Instruction::I32Add); },
                     BinaryOp::Minus => { func.instruction(&Instruction::I32Sub); },
@@ -53,77 +57,167 @@ impl WasmGenerator {
                     BinaryOp::Less => { func.instruction(&Instruction::I32LtS); },
                     BinaryOp::LessEqual => { func.instruction(&Instruction::I32LeS); },
                     BinaryOp::Range => {
-                        // Not implemented: leave 0
                         func.instruction(&Instruction::Drop);
                         func.instruction(&Instruction::I32Const(0));
                     }
                 }
             }
-            Expr::Identifier(_) => {
+            // need to
+            Expr::Identifier(str) => {
+                let index = params.into_iter().position(|p| p.name == *str);
+                match index {
+                    Some(num) => {
+                        func.instruction(&Instruction::LocalGet(num as u32));
+                    }
+                    _ => {}
+                }
                 // locals/vars not implemented yet: push 0
+                // func.instruction(&Instruction::I32Const(0));
+            }
+            Expr::Call { callee, args } => {
+                // Only support calling a named function for now
+                if let Expr::Identifier(name) = &**callee {
+                    // evaluate arguments
+                    for a in args {
+                        self.gen_expr(func, vec![], a);
+                    }
+                    if let Some(&idx) = self.func_indices.get(name) {
+                        func.instruction(&Instruction::Call(idx));
+                    } else {
+                        // unknown function: drop args and push 0
+                        for _ in args { func.instruction(&Instruction::Drop); }
+                        func.instruction(&Instruction::I32Const(0));
+                    }
+                } else {
+                    // unsupported callee expression
+                    func.instruction(&Instruction::I32Const(0));
+                }
+            }
+            Expr::XString(_) => {
                 func.instruction(&Instruction::I32Const(0));
             }
-            Expr::Call { .. } => {
-                // calls not yet supported
-                func.instruction(&Instruction::I32Const(0));
-            }
-            Expr::XString(s) => {
-                func.instruction(&Instruction::I32Const(0));
-            }
-            Expr::Grouping(inner) => self.gen_expr(func, inner),
+            Expr::Grouping(inner) => self.gen_expr(func, vec![], inner),
+            
         }
     }
 
-    fn gen_stmt(&self, func: &mut Function, stmt: &Stmt) {
+    fn gen_stmt(&self, func: &mut Function, stmt: &Stmt, params: Vec<Param>, ret_has_value: bool) {
         match stmt {
             Stmt::ExprStmt(e) => {
-                self.gen_expr(func, e);
+                self.gen_expr(func, params.clone(), e);
                 func.instruction(&Instruction::Drop);
             }
             Stmt::VarAssign { .. } => {
                 // locals not yet supported: ignore
             }
             Stmt::Return(opt) => {
-                if let Some(e) = opt { self.gen_expr(func, e); }
-                else { func.instruction(&Instruction::I32Const(0)); }
+                if let Some(e) = opt {
+                    self.gen_expr(func, params.clone(), e);
+                } else if ret_has_value {
+                    func.instruction(&Instruction::I32Const(0));
+                }
                 func.instruction(&Instruction::Return);
             }
             Stmt::FunctionDef { .. } => {
-                // multi-function not supported in this minimal skeleton
+                // handled at top-level
             }
             Stmt::Block(stmts) => {
-                for s in stmts { self.gen_stmt(func, s); }
+                for s in stmts { self.gen_stmt(func, s, vec![], ret_has_value); }
             }
         }
     }
 
-    pub fn compile_main(&mut self, body: &[Stmt], ret_type: Type) -> Vec<u8> {
-        // create type for function: no params, one result
-        let result_ty = Self::wasm_valtype(&ret_type);
-        let type_index = self.types.len();
-        // register function type index 0
-        {
-            let mut ty = self.types.ty();
-            ty.function(vec![], vec![result_ty]);
+    pub fn compile_program(&mut self, program: Vec<Stmt>) -> Vec<u8> {
+        // Split into function defs and top-level statements
+        let mut functions: Vec<(String, Vec<Param>, Option<Type>, Vec<Stmt>)> = Vec::new();
+        let mut top_level: Vec<Stmt> = Vec::new();
+        for s in &program {
+            if let Stmt::FunctionDef { name, params, return_type, body } = s {
+                functions.push((name.clone(), params.clone(), return_type.clone(), body.clone()));
+            } else {
+                top_level.push(s.clone());
+            }
         }
 
-        // function section declares it
-        self.functions.function(type_index as u32);
+        // First pass: declare all function types and functions to get indices
+        for (name, params, ret_ty, _body) in &functions {
+            let param_tys: Vec<ValType> = params.iter().map(|p| Self::wasm_valtype(&p.ty)).collect();
+            let result_tys: Vec<ValType> = match ret_ty {
+                Some(t) => {
+                    if *t != Type::Void {
 
-        // code section body
-        let mut f = Function::new(vec![]); // no locals yet
-        for stmt in body {
-            self.gen_stmt(&mut f, stmt);
+                        vec![Self::wasm_valtype(t)]
+                    } else { vec![] }
+                }
+                None => vec![],
+            };
+            let type_index = self.types.len();
+            {
+                let mut ty = self.types.ty();
+                ty.function(param_tys, result_tys);
+            }
+
+            self.functions.function(type_index as u32);
+            let idx = self.func_count;
+            self.func_indices.insert(name.clone(), idx);
+            self.func_count += 1;
         }
-        // ensure something is on stack: default 0
-        f.instruction(&Instruction::I32Const(0));
-        f.instruction(&Instruction::End);
-        self.code.function(&f);
 
-        // export as "main"
-        self.exports.export("main", ExportKind::Func, 0);
+        // If there are top-level statements, synthesize a main: () -> i32
+        let mut synthetic_main_index: Option<u32> = None;
+        if !top_level.is_empty() {
+            let type_index = self.types.len();
+            {
+                let mut ty = self.types.ty();
+                ty.function(vec![], vec![ValType::I32]);
+            }
+            self.functions.function(type_index as u32);
+            let idx = self.func_count;
+            self.func_indices.insert("main".to_string(), idx);
+            self.func_count += 1;
+            synthetic_main_index = Some(idx);
+        }
 
-        // build module
+        // Second pass: define function bodies in the same order as declared
+        for (_name, _params, ret_ty, body) in &functions {
+            let ret_has_value = match ret_ty {
+                Some(t) if *t != Type::Void => true,
+                _ => false,
+            };
+            let mut f = Function::new(vec![]);
+            for stmt in body {
+                self.gen_stmt(&mut f, stmt, _params.clone(), ret_has_value);
+            }
+            if ret_has_value {
+                // ensure something on the stack for fallthrough
+                // f.instruction(&Instruction::I32Const(0));
+            }
+            f.instruction(&Instruction::End);
+            self.code.function(&f);
+        }
+
+        if let Some(_idx) = synthetic_main_index {
+            let mut f = Function::new(vec![]);
+            for stmt in &top_level {
+                self.gen_stmt(&mut f, stmt, vec![],true);
+            }
+            // ensure something is on stack: default 0
+            f.instruction(&Instruction::I32Const(0));
+            f.instruction(&Instruction::End);
+            self.code.function(&f);
+        }
+
+        // Export all user-defined functions and synthetic main if present
+        for (name, _p, _r, _b) in &functions {
+            if let Some(&idx) = self.func_indices.get(name) {
+                self.exports.export(name, ExportKind::Func, idx);
+            }
+        }
+        if let Some(idx) = synthetic_main_index {
+            self.exports.export("main", ExportKind::Func, idx);
+        }
+
+        // Build module
         self.module.section(&self.types);
         self.module.section(&self.functions);
         self.module.section(&self.exports);
@@ -133,9 +227,8 @@ impl WasmGenerator {
 }
 
 pub fn compile_to_wasm(program: Vec<Stmt>) -> Vec<u8> {
-    // For now, treat the entire program as a block for a single main that returns i32
     let mut wg = WasmGenerator::new();
-    wg.compile_main(&program, Type::Int)
+    wg.compile_program(program)
 }
 
 /// Ensure data/wasm_out exists relative to the project root (or current working directory)

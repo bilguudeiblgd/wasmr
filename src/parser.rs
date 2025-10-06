@@ -303,7 +303,7 @@ impl Parser {
                 self.consume(&Token::Colon)?;
                 Some(self.parse_x_type()?)
             }
-            _ => return Err(ParseError::Eof)
+            _ => None,
         };
 
         self.consume(&Token::AssignArrow)?;
