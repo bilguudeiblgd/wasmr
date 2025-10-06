@@ -198,11 +198,36 @@ impl WasmGenerator {
 
         if let Some(_idx) = synthetic_main_index {
             let mut f = Function::new(vec![]);
-            for stmt in &top_level {
-                self.gen_stmt(&mut f, stmt, vec![],true);
+            let last_idx = top_level.len().saturating_sub(1);
+            for (i, stmt) in top_level.iter().enumerate() {
+                if i == last_idx {
+                    // For the last statement, evaluate it and leave result on stack
+                    match stmt {
+                        Stmt::ExprStmt(e) | Stmt::VarAssign { value: e, .. } => {
+                            self.gen_expr(&mut f, vec![], e);
+                        }
+                        Stmt::Return(opt) => {
+                            if let Some(e) = opt {
+                                self.gen_expr(&mut f, vec![], e);
+                            } else {
+                                f.instruction(&Instruction::I32Const(0));
+                            }
+                            f.instruction(&Instruction::Return);
+                        }
+                        _ => {
+                            self.gen_stmt(&mut f, stmt, vec![], true);
+                            f.instruction(&Instruction::I32Const(0));
+                        }
+                    }
+                } else {
+                    // For non-last statements, generate normally
+                    self.gen_stmt(&mut f, stmt, vec![], true);
+                }
             }
-            // ensure something is on stack: default 0
-            f.instruction(&Instruction::I32Const(0));
+            // If empty top_level, ensure default return
+            if top_level.is_empty() {
+                f.instruction(&Instruction::I32Const(0));
+            }
             f.instruction(&Instruction::End);
             self.code.function(&f);
         }

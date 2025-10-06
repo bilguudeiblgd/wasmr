@@ -1,6 +1,3 @@
-add <- function(a: vec[int], b: int): vec[int] {
+add <- function(a: int, b: int): int {
     return (a + b)
 }
-
-num <- 42
-
