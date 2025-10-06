@@ -1,10 +1,7 @@
 use std::collections::HashMap;
-use wasm_encoder::{Module, CodeSection, Function, Instruction, ValType, FunctionSection, TypeSection, ExportSection, ExportKind};
+use wasm_encoder::{Module, CodeSection, Function, Instruction, ValType, FunctionSection, TypeSection, ExportSection, ExportKind, ImportSection, EntityType};
 
 use crate::ast::{Stmt, Expr, BinaryOp, Type, Param};
-
-// Simple codegen that emits a single function named "main" for a block of statements
-// and returns i32 (for now). This is a minimal scaffold to start integrating wasm-encoder.
 
 pub struct WasmGenerator {
     module: Module,
@@ -12,9 +9,35 @@ pub struct WasmGenerator {
     functions: FunctionSection,
     exports: ExportSection,
     code: CodeSection,
-    // function registry
     func_indices: HashMap<String, u32>,
     func_count: u32,
+}
+
+/// Context for tracking locals within a function
+struct LocalContext {
+    /// Map variable names to local indices
+    locals: HashMap<String, u32>,
+    /// Function parameters (also accessible as locals, starting from index 0)
+    params: Vec<Param>,
+}
+
+impl LocalContext {
+    fn new(params: Vec<Param>) -> Self {
+        let mut locals = HashMap::new();
+        // Parameters are locals 0..param_count
+        for (i, param) in params.iter().enumerate() {
+            locals.insert(param.name.clone(), i as u32);
+        }
+        Self { locals, params }
+    }
+
+    fn get_local(&self, name: &str) -> Option<u32> {
+        self.locals.get(name).copied()
+    }
+
+    fn add_local(&mut self, name: String, index: u32) {
+        self.locals.insert(name, index);
+    }
 }
 
 impl WasmGenerator {
@@ -35,20 +58,47 @@ impl WasmGenerator {
             Type::Int | Type::Bool | Type::Char => ValType::I32,
             Type::Float => ValType::F32,
             Type::Double => ValType::F64,
-            // For now map others to i32 pointer placeholder
             _ => ValType::I32,
         }
     }
 
-    fn gen_expr(&self, func: &mut Function, params: Vec<Param>, expr: &Expr) {
+    /// Collect all variable declarations from statements
+    fn collect_vars(&self, stmts: &[Stmt]) -> Vec<(String, Type)> {
+        let mut vars = Vec::new();
+        for stmt in stmts {
+            self.collect_vars_from_stmt(stmt, &mut vars);
+        }
+        vars
+    }
+
+    fn collect_vars_from_stmt(&self, stmt: &Stmt, vars: &mut Vec<(String, Type)>) {
+        match stmt {
+            Stmt::VarAssign { name, x_type, .. } => {
+                // Use the declared type or default to Int
+                let ty = x_type.clone().unwrap_or(Type::Int);
+                // Only add if not already in list (avoid duplicates)
+                if !vars.iter().any(|(n, _)| n == name) {
+                    vars.push((name.clone(), ty));
+                }
+            }
+            Stmt::Block(stmts) => {
+                for s in stmts {
+                    self.collect_vars_from_stmt(s, vars);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn gen_expr(&self, func: &mut Function, ctx: &LocalContext, expr: &Expr) {
         match expr {
             Expr::Number(n) => {
                 let v: i32 = n.parse().unwrap_or(0);
                 func.instruction(&Instruction::I32Const(v));
             }
             Expr::Binary { left, op, right } => {
-                self.gen_expr(func, params.clone(), left);
-                self.gen_expr(func, params.clone(), right);
+                self.gen_expr(func, ctx, left);
+                self.gen_expr(func, ctx, right);
                 match op {
                     BinaryOp::Plus => { func.instruction(&Instruction::I32Add); },
                     BinaryOp::Minus => { func.instruction(&Instruction::I32Sub); },
@@ -62,57 +112,58 @@ impl WasmGenerator {
                     }
                 }
             }
-            // need to
-            Expr::Identifier(str) => {
-                let index = params.into_iter().position(|p| p.name == *str);
-                match index {
-                    Some(num) => {
-                        func.instruction(&Instruction::LocalGet(num as u32));
-                    }
-                    _ => {}
+            Expr::Identifier(name) => {
+                if let Some(idx) = ctx.get_local(name) {
+                    func.instruction(&Instruction::LocalGet(idx));
+                } else {
+                    // Unknown variable, push 0 as fallback
+                    func.instruction(&Instruction::I32Const(0));
                 }
-                // locals/vars not implemented yet: push 0
-                // func.instruction(&Instruction::I32Const(0));
             }
             Expr::Call { callee, args } => {
-                // Only support calling a named function for now
                 if let Expr::Identifier(name) = &**callee {
-                    // evaluate arguments
+                    // Evaluate arguments
                     for a in args {
-                        self.gen_expr(func, vec![], a);
+                        self.gen_expr(func, ctx, a);
                     }
                     if let Some(&idx) = self.func_indices.get(name) {
                         func.instruction(&Instruction::Call(idx));
                     } else {
-                        // unknown function: drop args and push 0
+                        // Unknown function: drop args and push 0
                         for _ in args { func.instruction(&Instruction::Drop); }
                         func.instruction(&Instruction::I32Const(0));
                     }
                 } else {
-                    // unsupported callee expression
                     func.instruction(&Instruction::I32Const(0));
                 }
             }
             Expr::XString(_) => {
                 func.instruction(&Instruction::I32Const(0));
             }
-            Expr::Grouping(inner) => self.gen_expr(func, vec![], inner),
-            
+            Expr::Grouping(inner) => self.gen_expr(func, ctx, inner),
         }
     }
 
-    fn gen_stmt(&self, func: &mut Function, stmt: &Stmt, params: Vec<Param>, ret_has_value: bool) {
+    fn gen_stmt(&self, func: &mut Function, ctx: &LocalContext, stmt: &Stmt, ret_has_value: bool) {
         match stmt {
             Stmt::ExprStmt(e) => {
-                self.gen_expr(func, params.clone(), e);
+                self.gen_expr(func, ctx, e);
                 func.instruction(&Instruction::Drop);
             }
-            Stmt::VarAssign { .. } => {
-                // locals not yet supported: ignore
+            Stmt::VarAssign { name, value, .. } => {
+                // Generate the value expression
+                self.gen_expr(func, ctx, value);
+                // Store it in the local
+                if let Some(idx) = ctx.get_local(name) {
+                    func.instruction(&Instruction::LocalSet(idx));
+                } else {
+                    // Variable not found, just drop the value
+                    func.instruction(&Instruction::Drop);
+                }
             }
             Stmt::Return(opt) => {
                 if let Some(e) = opt {
-                    self.gen_expr(func, params.clone(), e);
+                    self.gen_expr(func, ctx, e);
                 } else if ret_has_value {
                     func.instruction(&Instruction::I32Const(0));
                 }
@@ -122,12 +173,15 @@ impl WasmGenerator {
                 // handled at top-level
             }
             Stmt::Block(stmts) => {
-                for s in stmts { self.gen_stmt(func, s, vec![], ret_has_value); }
+                for s in stmts {
+                    self.gen_stmt(func, ctx, s, ret_has_value);
+                }
             }
         }
     }
 
     pub fn compile_program(&mut self, program: Vec<Stmt>) -> Vec<u8> {
+
         // Split into function defs and top-level statements
         let mut functions: Vec<(String, Vec<Param>, Option<Type>, Vec<Stmt>)> = Vec::new();
         let mut top_level: Vec<Stmt> = Vec::new();
@@ -139,17 +193,12 @@ impl WasmGenerator {
             }
         }
 
-        // First pass: declare all function types and functions to get indices
+        // First pass: declare all function types
         for (name, params, ret_ty, _body) in &functions {
             let param_tys: Vec<ValType> = params.iter().map(|p| Self::wasm_valtype(&p.ty)).collect();
             let result_tys: Vec<ValType> = match ret_ty {
-                Some(t) => {
-                    if *t != Type::Void {
-
-                        vec![Self::wasm_valtype(t)]
-                    } else { vec![] }
-                }
-                None => vec![],
+                Some(t) if *t != Type::Void => vec![Self::wasm_valtype(t)],
+                _ => vec![],
             };
             let type_index = self.types.len();
             {
@@ -178,53 +227,84 @@ impl WasmGenerator {
             synthetic_main_index = Some(idx);
         }
 
-        // Second pass: define function bodies in the same order as declared
-        for (_name, _params, ret_ty, body) in &functions {
-            let ret_has_value = match ret_ty {
-                Some(t) if *t != Type::Void => true,
-                _ => false,
-            };
-            let mut f = Function::new(vec![]);
+        // Second pass: define function bodies
+        for (name, params, ret_ty, body) in &functions {
+            let ret_has_value = matches!(ret_ty, Some(t) if *t != Type::Void);
+            
+            // Collect local variables
+            let vars = self.collect_vars(body);
+            let local_types: Vec<(u32, ValType)> = vars
+                .iter()
+                .map(|(_, ty)| (1, Self::wasm_valtype(ty)))
+                .collect();
+            
+            let mut f = Function::new(local_types);
+            
+            // Build local context
+            let mut ctx = LocalContext::new(params.clone());
+            let param_count = params.len() as u32;
+            for (i, (var_name, _)) in vars.iter().enumerate() {
+                ctx.add_local(var_name.clone(), param_count + i as u32);
+            }
+            
+            // Generate statements
             for stmt in body {
-                self.gen_stmt(&mut f, stmt, _params.clone(), ret_has_value);
+                self.gen_stmt(&mut f, &ctx, stmt, ret_has_value);
             }
-            if ret_has_value {
-                // ensure something on the stack for fallthrough
-                // f.instruction(&Instruction::I32Const(0));
-            }
+            
             f.instruction(&Instruction::End);
             self.code.function(&f);
         }
 
+        // Generate synthetic main if needed
         if let Some(_idx) = synthetic_main_index {
-            let mut f = Function::new(vec![]);
+            // Collect variables from top-level statements
+            let vars = self.collect_vars(&top_level);
+            let local_types: Vec<(u32, ValType)> = vars
+                .iter()
+                .map(|(_, ty)| (1, Self::wasm_valtype(ty)))
+                .collect();
+            
+            let mut f = Function::new(local_types);
+            
+            // Build local context (no params for main)
+            let mut ctx = LocalContext::new(vec![]);
+            for (i, (var_name, _)) in vars.iter().enumerate() {
+                ctx.add_local(var_name.clone(), i as u32);
+            }
+            
             let last_idx = top_level.len().saturating_sub(1);
             for (i, stmt) in top_level.iter().enumerate() {
                 if i == last_idx {
-                    // For the last statement, evaluate it and leave result on stack
+                    // For the last statement, evaluate and leave on stack
                     match stmt {
-                        Stmt::ExprStmt(e) | Stmt::VarAssign { value: e, .. } => {
-                            self.gen_expr(&mut f, vec![], e);
+                        Stmt::ExprStmt(e) => {
+                            self.gen_expr(&mut f, &ctx, e);
+                        }
+                        Stmt::VarAssign { name, value, .. } => {
+                            self.gen_expr(&mut f, &ctx, value);
+                            if let Some(idx) = ctx.get_local(name) {
+                                f.instruction(&Instruction::LocalTee(idx)); // Tee: set local AND keep value on stack
+                            }
                         }
                         Stmt::Return(opt) => {
                             if let Some(e) = opt {
-                                self.gen_expr(&mut f, vec![], e);
+                                self.gen_expr(&mut f, &ctx, e);
                             } else {
                                 f.instruction(&Instruction::I32Const(0));
                             }
                             f.instruction(&Instruction::Return);
                         }
                         _ => {
-                            self.gen_stmt(&mut f, stmt, vec![], true);
+                            self.gen_stmt(&mut f, &ctx, stmt, true);
                             f.instruction(&Instruction::I32Const(0));
                         }
                     }
                 } else {
-                    // For non-last statements, generate normally
-                    self.gen_stmt(&mut f, stmt, vec![], true);
+                    self.gen_stmt(&mut f, &ctx, stmt, true);
                 }
             }
-            // If empty top_level, ensure default return
+            
             if top_level.is_empty() {
                 f.instruction(&Instruction::I32Const(0));
             }
@@ -232,7 +312,7 @@ impl WasmGenerator {
             self.code.function(&f);
         }
 
-        // Export all user-defined functions and synthetic main if present
+        // Export functions
         for (name, _p, _r, _b) in &functions {
             if let Some(&idx) = self.func_indices.get(name) {
                 self.exports.export(name, ExportKind::Func, idx);
@@ -256,7 +336,11 @@ pub fn compile_to_wasm(program: Vec<Stmt>) -> Vec<u8> {
     wg.compile_program(program)
 }
 
-/// Ensure data/wasm_out exists relative to the project root (or current working directory)
+pub fn wasm_to_wat(wasm_bytes: &[u8]) -> Result<String, String> {
+    wasmprinter::print_bytes(wasm_bytes)
+        .map_err(|e| format!("Failed to convert WASM to WAT: {}", e))
+}
+
 fn ensure_wasm_out_dir() -> std::io::Result<std::path::PathBuf> {
     use std::path::PathBuf;
     use std::fs;
@@ -268,23 +352,46 @@ fn ensure_wasm_out_dir() -> std::io::Result<std::path::PathBuf> {
     Ok(path)
 }
 
-/// Write the provided wasm bytes to data/wasm_out/<filename>.wasm
-/// Returns the full path on success.
 pub fn write_wasm_file<S: AsRef<str>>(filename_stem: S, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
     use std::fs;
     use std::path::PathBuf;
     let out_dir = ensure_wasm_out_dir()?;
     let mut path = PathBuf::from(out_dir);
     let stem = filename_stem.as_ref();
-    // Append .wasm if not already provided
     let file_name = if stem.ends_with(".wasm") { stem.to_string() } else { format!("{}.wasm", stem) };
     path.push(file_name);
     fs::write(&path, bytes)?;
     Ok(path)
 }
 
-/// Convenience function: compile the given program and write to data/wasm_out/<filename>.wasm
+pub fn write_wat_file<S: AsRef<str>>(filename_stem: S, wat_text: &str) -> std::io::Result<std::path::PathBuf> {
+    use std::fs;
+    use std::path::PathBuf;
+    let out_dir = ensure_wasm_out_dir()?;
+    let mut path = PathBuf::from(out_dir);
+    let stem = filename_stem.as_ref();
+    let file_name = if stem.ends_with(".wat") { stem.to_string() } else { format!("{}.wat", stem) };
+    path.push(file_name);
+    fs::write(&path, wat_text)?;
+    Ok(path)
+}
+
 pub fn compile_and_write<S: AsRef<str>>(program: Vec<Stmt>, filename_stem: S) -> std::io::Result<std::path::PathBuf> {
     let bytes = compile_to_wasm(program);
-    write_wasm_file(filename_stem, &bytes)
+    let stem = filename_stem.as_ref();
+    
+    let wasm_path = write_wasm_file(stem, &bytes)?;
+    
+    match wasm_to_wat(&bytes) {
+        Ok(wat_text) => {
+            if let Err(e) = write_wat_file(stem, &wat_text) {
+                eprintln!("Warning: Failed to write WAT file: {}", e);
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: Failed to convert to WAT: {}", e);
+        }
+    }
+    
+    Ok(wasm_path)
 }

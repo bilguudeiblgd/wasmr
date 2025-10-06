@@ -7,6 +7,7 @@ name = "Rty_compiler"
 version = "0.1.0"
 dependencies = [
  "wasm-encoder 0.236.1",
+ "wasmprinter",
  "wasmtime",
 ]
 
