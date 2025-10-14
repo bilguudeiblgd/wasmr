@@ -5,6 +5,7 @@ pub mod ast;
 pub mod parser;
 pub mod codegen;
 pub mod runtime;
+pub mod ir;
 
 /// Return true if identifier is a built-in type name the lexer should tag as Token::Type.
 pub fn is_builtin_type_name(name: &str) -> bool {
