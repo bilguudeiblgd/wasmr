@@ -89,6 +89,76 @@ impl WasmGenerator {
         }
     }
 
+    fn gen_binary_op(&self, func: &mut Function, ctx: &LocalContext, op: &BinaryOp, left: &Expr, right: &Expr) {
+        self.gen_expr(func, ctx, left);
+        self.gen_expr(func, ctx, right);
+
+        // Verify both operands have the same type (sanity check)
+        // IR should guarantee this, but we check defensively
+        if left.ty != right.ty {
+            eprintln!("Warning: Binary operation type mismatch: left={:?}, right={:?}", left.ty, right.ty);
+        }
+
+        // Use the left operand's type to determine which instruction to emit
+        let ty = &left.ty;
+
+        match op {
+            BinaryOp::Plus => {
+                match ty {
+                    Type::Int => func.instruction(&Instruction::I32Add),
+                    Type::Float => func.instruction(&Instruction::F32Add),
+                    Type::Double => func.instruction(&Instruction::F64Add),
+                    _ => func.instruction(&Instruction::I32Add), // fallback
+                };
+            },
+            BinaryOp::Minus => {
+                match ty {
+                    Type::Int => func.instruction(&Instruction::I32Sub),
+                    Type::Float => func.instruction(&Instruction::F32Sub),
+                    Type::Double => func.instruction(&Instruction::F64Sub),
+                    _ => func.instruction(&Instruction::I32Sub),
+                };
+            },
+            BinaryOp::Mul => {
+                match ty {
+                    Type::Int => func.instruction(&Instruction::I32Mul),
+                    Type::Float => func.instruction(&Instruction::F32Mul),
+                    Type::Double => func.instruction(&Instruction::F64Mul),
+                    _ => func.instruction(&Instruction::I32Mul),
+                };
+            },
+            BinaryOp::Div => {
+                match ty {
+                    Type::Int => func.instruction(&Instruction::I32DivS),
+                    Type::Float => func.instruction(&Instruction::F32Div),
+                    Type::Double => func.instruction(&Instruction::F64Div),
+                    _ => func.instruction(&Instruction::I32DivS),
+                };
+            },
+            BinaryOp::Less => {
+                match ty {
+                    Type::Int => func.instruction(&Instruction::I32LtS),
+                    Type::Float => func.instruction(&Instruction::F32Lt),
+                    Type::Double => func.instruction(&Instruction::F64Lt),
+                    _ => func.instruction(&Instruction::I32LtS),
+                };
+            },
+            BinaryOp::LessEqual => {
+                match ty {
+                    Type::Int => func.instruction(&Instruction::I32LeS),
+                    Type::Float => func.instruction(&Instruction::F32Le),
+                    Type::Double => func.instruction(&Instruction::F64Le),
+                    _ => func.instruction(&Instruction::I32LeS),
+                };
+            },
+            BinaryOp::Range => {
+                func.instruction(&Instruction::Drop);
+                func.instruction(&Instruction::I32Const(0));
+            }
+        }
+
+    }
+
     fn gen_expr(&self, func: &mut Function, ctx: &LocalContext, expr: &Expr) {
         match &expr.kind {
             IRExprKind::Number(n) => {
@@ -96,20 +166,7 @@ impl WasmGenerator {
                 func.instruction(&Instruction::I32Const(v));
             }
             IRExprKind::Binary { left, op, right } => {
-                self.gen_expr(func, ctx, left);
-                self.gen_expr(func, ctx, right);
-                match op {
-                    BinaryOp::Plus => { func.instruction(&Instruction::I32Add); },
-                    BinaryOp::Minus => { func.instruction(&Instruction::I32Sub); },
-                    BinaryOp::Mul => { func.instruction(&Instruction::I32Mul); },
-                    BinaryOp::Div => { func.instruction(&Instruction::I32DivS); },
-                    BinaryOp::Less => { func.instruction(&Instruction::I32LtS); },
-                    BinaryOp::LessEqual => { func.instruction(&Instruction::I32LeS); },
-                    BinaryOp::Range => {
-                        func.instruction(&Instruction::Drop);
-                        func.instruction(&Instruction::I32Const(0));
-                    }
-                }
+                self.gen_binary_op(func, ctx, op, left, right)
             }
             IRExprKind::Identifier(name) => {
                 if let Some(idx) = ctx.get_local(name) {
