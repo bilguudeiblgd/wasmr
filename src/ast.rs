@@ -7,6 +7,8 @@ pub enum BinaryOp {
     Less,
     LessEqual,
     Range, // for ':' operator
+    Or,    // '|'
+    And,   // '&'
 }
 
 #[derive(Debug, Clone, PartialEq)]

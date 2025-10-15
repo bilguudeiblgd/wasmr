@@ -20,7 +20,23 @@ impl Parser {
     }
 
     pub fn parse_expression(&mut self) -> Result<Expr, ParseError> {
-        self.parse_comparison()
+        self.parse_bool()
+    }
+
+    fn parse_bool(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_comparison()?;
+        loop {
+            if self.match_token(&Token::Or) {
+                let right = self.parse_comparison()?;
+                expr = Expr::Binary { left: Box::new(expr), op: BinaryOp::Or, right: Box::new(right) };
+            } else if self.match_token(&Token::And) {
+                let right = self.parse_comparison()?;
+                expr = Expr::Binary { left: Box::new(expr), op: BinaryOp::And, right: Box::new(right) };
+            } else {
+                break;
+            }
+        }
+        Ok(expr)
     }
 
     fn parse_comparison(&mut self) -> Result<Expr, ParseError> {
@@ -176,6 +192,8 @@ impl Parser {
             | (Some(Token::Minus), Token::Minus)
             | (Some(Token::Mul), Token::Mul)
             | (Some(Token::Div), Token::Div)
+            | (Some(Token::Or), Token::Or)
+            | (Some(Token::And), Token::And)
             | (Some(Token::LParen), Token::LParen)
             | (Some(Token::RParen), Token::RParen)
             | (Some(Token::LBrace), Token::LBrace)

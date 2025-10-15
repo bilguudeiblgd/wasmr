@@ -85,6 +85,14 @@ impl Lexer {
                     tokens.push(Token::Div);
                     self.consume(&chars, &mut current);
                 }
+                '|' => {
+                    tokens.push(Token::Or);
+                    self.consume(&chars, &mut current);
+                }
+                '&' => {
+                    tokens.push(Token::And);
+                    self.consume(&chars, &mut current);
+                }
                 '(' => {
                     tokens.push(Token::LParen);
                     self.consume(&chars, &mut current);
@@ -205,6 +213,8 @@ pub enum Token {
     Minus,
     Mul,
     Div,
+    Or,   // '|'
+    And,  // '&'
     LParen,
     RParen,
     LBrace,

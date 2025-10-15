@@ -151,6 +151,13 @@ impl WasmGenerator {
                     _ => func.instruction(&Instruction::I32LeS),
                 };
             },
+            BinaryOp::Or => {
+                // booleans are represented as i32 0/1
+                func.instruction(&Instruction::I32Or);
+            },
+            BinaryOp::And => {
+                func.instruction(&Instruction::I32And);
+            },
             BinaryOp::Range => {
                 func.instruction(&Instruction::Drop);
                 func.instruction(&Instruction::I32Const(0));

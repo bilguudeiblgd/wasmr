@@ -216,6 +216,13 @@ impl<'a> LowerCtx<'a> {
                         let _ = self.tr.unify_numeric(&l.ty, &r.ty)?;
                         Ok(IRExpr { kind: IRExprKind::Binary { left: Box::new(l), op, right: Box::new(r) }, ty: Type::Bool })
                     }
+                    BinaryOp::Or | BinaryOp::And => {
+                        if l.ty == Type::Bool && r.ty == Type::Bool {
+                            Ok(IRExpr { kind: IRExprKind::Binary { left: Box::new(l), op, right: Box::new(r) }, ty: Type::Bool })
+                        } else {
+                            Err(TypeError::UnsupportedOperation { op: format!("{:?}", op), left: l.ty, right: r.ty })
+                        }
+                    }
                     BinaryOp::Range => {
                         let _ = self.tr.unify_numeric(&l.ty, &r.ty)?;
                         Ok(IRExpr { kind: IRExprKind::Binary { left: Box::new(l), op, right: Box::new(r) }, ty: Type::Vector })
