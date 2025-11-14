@@ -2,7 +2,6 @@ use crate::is_builtin_type_name;
 
 pub struct Lexer {}
 
-
 // #TODO: handle comments and strings
 
 impl Lexer {
@@ -35,7 +34,10 @@ impl Lexer {
         let chars: Vec<char> = string.chars().collect();
 
         while current < chars.len() {
-            let c = match self.peek(&chars, current) { Some(ch) => ch, None => break };
+            let c = match self.peek(&chars, current) {
+                Some(ch) => ch,
+                None => break,
+            };
 
             // Handle whitespace: newlines become a distinct token, other whitespace is skipped
             if c.is_whitespace() {
@@ -62,7 +64,7 @@ impl Lexer {
                     self.consume(&chars, &mut current);
                     continue;
                 }
-                // single '<'
+                // single '<' - could be less-than operator or type angle bracket
                 tokens.push(Token::Less);
                 self.consume(&chars, &mut current);
                 continue;
@@ -109,12 +111,20 @@ impl Lexer {
                     tokens.push(Token::RBrace);
                     self.consume(&chars, &mut current);
                 }
+                '>' => {
+                    tokens.push(Token::Greater);
+                    self.consume(&chars, &mut current);
+                }
                 ':' => {
                     tokens.push(Token::Colon);
                     self.consume(&chars, &mut current);
                 }
                 ',' => {
                     tokens.push(Token::Comma);
+                    self.consume(&chars, &mut current);
+                }
+                '.' => {
+                    tokens.push(Token::Dot);
                     self.consume(&chars, &mut current);
                 }
                 '0'..='9' => {
@@ -136,7 +146,6 @@ impl Lexer {
                                 tokens.push(Token::Identifier(identifier_name))
                             }
                         }
-
                     }
                     current = new_current; // already points to the first non-ident char
                 }
@@ -155,8 +164,6 @@ impl Lexer {
         tokens.push(Token::EOF); // End of file token
         tokens
     }
-
-
 
     fn parse_number(&self, chars: &Vec<char>, start: usize) -> (String, usize) {
         let mut num_str = String::new();
@@ -202,7 +209,6 @@ impl Lexer {
             }
         }
         (str_str, current)
-
     }
 }
 
@@ -213,8 +219,8 @@ pub enum Token {
     Minus,
     Mul,
     Div,
-    Or,   // '|'
-    And,  // '&'
+    Or,  // '|'
+    And, // '&'
     LParen,
     RParen,
     LBrace,
@@ -222,7 +228,9 @@ pub enum Token {
     Colon,
     Comma,
     Less,
+    Greater,  // '>'
     LessEqual,
+    Dot,
 
     // Multi-char tokens
     AssignArrow, // <-
@@ -250,4 +258,3 @@ pub enum Token {
     Newline,
     EOF,
 }
-

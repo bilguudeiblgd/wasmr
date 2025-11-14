@@ -187,9 +187,31 @@ fn vector_scalar_ops() {
 #[test]
 fn simple_string() {
     let a = lex_str("\"bla bla\"");
-    let a_expected = vec![
-      Token::XString("bla bla".into()),
-      Token::EOF,  
-    ];
+    let a_expected = vec![Token::XString("bla bla".into()), Token::EOF];
     assert_eq!(a, a_expected);
+}
+
+#[test]
+fn lex_vector_type_in_function_signature() {
+    let tokens = lex_str("function(x: vector<int>): vector<double>");
+    assert_eq!(
+        tokens,
+        vec![
+            Token::Function,
+            Token::LParen,
+            Token::Identifier("x".into()),
+            Token::Colon,
+            Token::Type("vector".into()),
+            Token::Less,
+            Token::Type("int".into()),
+            Token::Greater,
+            Token::RParen,
+            Token::Colon,
+            Token::Type("vector".into()),
+            Token::Less,
+            Token::Type("double".into()),
+            Token::Greater,
+            Token::EOF
+        ]
+    );
 }

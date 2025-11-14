@@ -1,8 +1,5 @@
-add <- function(a: int, b: int): int {
-    myVar <- 1
-    return (a + b + myVar)
-}
-
-add_float <- function(a: float, b: float): float {
+add <- function(a: int, c: vector[int], b: int): int {
     return (a + b)
 }
+
+add(1, c(1,2,3), 2)

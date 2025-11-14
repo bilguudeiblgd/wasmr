@@ -1,6 +1,6 @@
+use rty_compiler::ast::{BinaryOp, Expr, Param, ParamKind, Stmt, Type};
 use rty_compiler::lexer::{Lexer, Token};
 use rty_compiler::parser::Parser;
-use rty_compiler::ast::{Expr, Stmt, BinaryOp, Param, Type};
 
 fn lex_tokens(s: &str) -> Vec<Token> {
     let lexer = Lexer::new();
@@ -9,21 +9,27 @@ fn lex_tokens(s: &str) -> Vec<Token> {
 
 fn parse_expr(s: &str) -> Expr {
     let mut tokens = lex_tokens(s);
-    if *tokens.last().unwrap() != Token::EOF { tokens.push(Token::EOF); }
+    if *tokens.last().unwrap() != Token::EOF {
+        tokens.push(Token::EOF);
+    }
     let mut p = Parser::new(tokens);
     p.parse_expression().expect("parse_expression failed")
 }
 
 fn parse_stmt(s: &str) -> Stmt {
     let mut tokens = lex_tokens(s);
-    if *tokens.last().unwrap() != Token::EOF { tokens.push(Token::EOF); }
+    if *tokens.last().unwrap() != Token::EOF {
+        tokens.push(Token::EOF);
+    }
     let mut p = Parser::new(tokens);
     p.parse_statement().expect("parse_statement failed")
 }
 
 fn parse_program(s: &str) -> Vec<Stmt> {
     let mut tokens = lex_tokens(s);
-    if *tokens.last().unwrap() != Token::EOF { tokens.push(Token::EOF); }
+    if *tokens.last().unwrap() != Token::EOF {
+        tokens.push(Token::EOF);
+    }
     let mut p = Parser::new(tokens);
     p.parse_program().expect("parse_program failed")
 }
@@ -49,10 +55,7 @@ fn parse_function_call() {
     let expr = parse_expr("f(1, 2)");
     let expected = Expr::Call {
         callee: Box::new(Expr::Identifier("f".into())),
-        args: vec![
-            Expr::Number("1".into()),
-            Expr::Number("2".into()),
-        ],
+        args: vec![Expr::Number("1".into()), Expr::Number("2".into())],
     };
     assert_eq!(expr, expected);
 }
@@ -62,11 +65,9 @@ fn parse_hello_world() {
     let expr = parse_expr("print(\"Hello world!\")");
     let expected = Expr::Call {
         callee: Box::new(Expr::Identifier("print".into())),
-        args: vec![
-            Expr::XString("Hello world!".into()),
-        ],
+        args: vec![Expr::XString("Hello world!".into())],
     };
-    assert_eq!(expr, expected);   
+    assert_eq!(expr, expected);
 }
 
 #[test]
@@ -96,7 +97,7 @@ fn parse_call_and_grouping() {
                 left: Box::new(Expr::Identifier("x".into())),
                 op: BinaryOp::Plus,
                 right: Box::new(Expr::Number("2".into())),
-            }
+            },
         ],
     };
     assert_eq!(expr, expected);
@@ -112,7 +113,7 @@ fn parse_assignment_statement() {
             left: Box::new(Expr::Number("1".into())),
             op: BinaryOp::Range,
             right: Box::new(Expr::Number("3".into())),
-        }
+        },
     };
     assert_eq!(stmt, expected);
 }
@@ -139,8 +140,22 @@ fn parse_block_statement() {
     match stmt {
         Stmt::Block(body) => {
             assert_eq!(body.len(), 2);
-            assert_eq!(body[0], Stmt::VarAssign { name: "x".into(), x_type: Some(Type::Int), value: Expr::Number("1".into())});
-            assert_eq!(body[1], Stmt::VarAssign { name: "y".into(), x_type: Some(Type::Int), value: Expr::Number("2".into())});
+            assert_eq!(
+                body[0],
+                Stmt::VarAssign {
+                    name: "x".into(),
+                    x_type: Some(Type::Int),
+                    value: Expr::Number("1".into())
+                }
+            );
+            assert_eq!(
+                body[1],
+                Stmt::VarAssign {
+                    name: "y".into(),
+                    x_type: Some(Type::Int),
+                    value: Expr::Number("2".into())
+                }
+            );
         }
         _ => panic!("expected block"),
     }
@@ -151,18 +166,41 @@ fn parse_function_definition_full() {
     let prog = parse_program("f <- function(x: int): int { return(x + x) }");
     assert_eq!(prog.len(), 1);
     match &prog[0] {
-        Stmt::FunctionDef { name, params, return_type, body } => {
+        Stmt::VarAssign {
+            name,
+            x_type,
+            value,
+        } => {
             assert_eq!(name, "f");
-            assert_eq!(params, &vec![Param { name: "x".into(), ty: Type::Int }]);
-            assert_eq!(return_type, &Some(Type::Int));
-            assert_eq!(body.len(), 1);
-            assert_eq!(body[0], Stmt::Return(Some(Expr::Binary {
-                left: Box::new(Expr::Identifier("x".into())),
-                op: BinaryOp::Plus,
-                right: Box::new(Expr::Identifier("x".into())),
-            })));
+            assert!(x_type.is_none());
+            match value {
+                Expr::FunctionDef {
+                    params,
+                    return_type,
+                    body,
+                } => {
+                    assert_eq!(
+                        params,
+                        &vec![Param {
+                            name: "x".into(),
+                            kind: ParamKind::Normal(Type::Int)
+                        }]
+                    );
+                    assert_eq!(return_type, &Some(Type::Int));
+                    assert_eq!(body.len(), 1);
+                    assert_eq!(
+                        body[0],
+                        Stmt::Return(Some(Expr::Binary {
+                            left: Box::new(Expr::Identifier("x".into())),
+                            op: BinaryOp::Plus,
+                            right: Box::new(Expr::Identifier("x".into())),
+                        }))
+                    );
+                }
+                _ => panic!("expected function expression"),
+            }
         }
-        _ => panic!("expected function def"),
+        _ => panic!("expected var assign of function expr"),
     }
 }
 
@@ -170,6 +208,143 @@ fn parse_function_definition_full() {
 fn parse_program_multiple_statements() {
     let prog = parse_program("a: int <- 1\nb: int <- 2");
     assert_eq!(prog.len(), 2);
-    assert_eq!(prog[0], Stmt::VarAssign { name: "a".into(), x_type: Some(Type::Int), value: Expr::Number("1".into())});
-    assert_eq!(prog[1], Stmt::VarAssign { name: "b".into(), x_type: Some(Type::Int), value: Expr::Number("2".into())});
+    assert_eq!(
+        prog[0],
+        Stmt::VarAssign {
+            name: "a".into(),
+            x_type: Some(Type::Int),
+            value: Expr::Number("1".into())
+        }
+    );
+    assert_eq!(
+        prog[1],
+        Stmt::VarAssign {
+            name: "b".into(),
+            x_type: Some(Type::Int),
+            value: Expr::Number("2".into())
+        }
+    );
 }
+
+#[test]
+fn parse_vector() {
+    let prog = parse_program("a <- c(1,2,3)");
+    assert_eq!(prog.len(), 1);
+    assert_eq!(
+        prog[0],
+        Stmt::VarAssign {
+            name: "a".into(),
+            x_type: None,
+            value: Expr::Call {
+                callee: Box::new(Expr::Identifier("c".into())),
+                args: vec![
+                    Expr::Number("1".into()),
+                    Expr::Number("2".into()),
+                    Expr::Number("3".into())
+                ]
+            }
+        }
+    );
+}
+
+#[test]
+fn parse_variable_arguments() {
+    let prog = parse_program("my_func <- function(...) { return(c(...)) }");
+    assert_eq!(prog.len(), 1);
+    match &prog[0] {
+        Stmt::VarAssign {
+            name,
+            x_type,
+            value,
+        } => {
+            assert_eq!(name, "my_func");
+            assert!(x_type.is_none());
+            match value {
+                Expr::FunctionDef {
+                    params,
+                    return_type,
+                    body,
+                } => {
+                    assert_eq!(
+                        params,
+                        &vec![Param {
+                            name: "...".into(),
+                            kind: ParamKind::VarArgs
+                        }]
+                    );
+                    assert_eq!(return_type, &None);
+                    assert_eq!(
+                        body,
+                        &vec![Stmt::Return(Some(Expr::Call {
+                            callee: Box::new(Expr::Identifier("c".into())),
+                            args: vec![Expr::VarArgs]
+                        }))]
+                    );
+                }
+                _ => panic!("expected function expression"),
+            }
+        }
+        _ => panic!("expected var assign of function expr"),
+    }
+}
+
+#[test]
+fn parse_complex_function_with_vectors() {
+    let prog = parse_program(
+        "add_vec <- function(a: vector<int>, b: vector<int>): vector<int> { \
+            result: vector<int> <- a + b\n\
+            return result \
+        }"
+    );
+    assert_eq!(prog.len(), 1);
+    match &prog[0] {
+        Stmt::VarAssign {
+            name,
+            x_type,
+            value,
+        } => {
+            assert_eq!(name, "add_vec");
+            assert!(x_type.is_none());
+            match value {
+                Expr::FunctionDef {
+                    params,
+                    return_type,
+                    body,
+                } => {
+                    assert_eq!(
+                        params,
+                        &vec![
+                            Param {
+                                name: "a".into(),
+                                kind: ParamKind::Normal(Type::Vector(Box::new(Type::Int)))
+                            },
+                            Param {
+                                name: "b".into(),
+                                kind: ParamKind::Normal(Type::Vector(Box::new(Type::Int)))
+                            }
+                        ]
+                    );
+                    assert_eq!(
+                        return_type,
+                        &Some(Type::Vector(Box::new(Type::Int)))
+                    );
+                    assert_eq!(body.len(), 2);
+                    // Check the first statement is a variable assignment
+                    match &body[0] {
+                        Stmt::VarAssign { name, x_type, .. } => {
+                            assert_eq!(name, "result");
+                            assert_eq!(
+                                x_type,
+                                &Some(Type::Vector(Box::new(Type::Int)))
+                            );
+                        }
+                        _ => panic!("expected var assign"),
+                    }
+                }
+                _ => panic!("expected function expression"),
+            }
+        }
+        _ => panic!("expected var assign of function expr"),
+    }
+}
+

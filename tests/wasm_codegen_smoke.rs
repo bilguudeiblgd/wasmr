@@ -1,4 +1,4 @@
-use rty_compiler::ast::{Stmt, Expr, Type, BinaryOp};
+use rty_compiler::ast::{Stmt, Expr, BinaryOp};
 use rty_compiler::codegen::compile_to_wasm;
 
 #[test]

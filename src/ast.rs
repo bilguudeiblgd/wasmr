@@ -1,4 +1,5 @@
 #[derive(Debug, Clone, PartialEq)]
+// #TODO: add more maths operations + functions.
 pub enum BinaryOp {
     Plus,
     Minus,
@@ -16,6 +17,16 @@ pub enum Expr {
     Number(String),
     Identifier(String),
     XString(String),
+    /// Represents the `...` placeholder inside function bodies.
+    VarArgs,
+    // Anonymous function literal that evaluates to a reference to that function.
+    // In practice this is typically used on the right-hand side of an assignment,
+    // e.g., `f <- function(x: int): int { return(x) }`.
+    FunctionDef {
+        params: Vec<Param>,
+        return_type: Option<Type>,
+        body: Vec<Stmt>,
+    },
     Binary {
         left: Box<Expr>,
         op: BinaryOp,
@@ -31,22 +42,26 @@ pub enum Expr {
 // -------------------- Statements & Program --------------------
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ParamKind {
+    Normal(Type),
+    VarArgs,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Param {
     pub name: String,
-    pub ty: Type,
+    pub kind: ParamKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     ExprStmt(Expr),
-    VarAssign { name: String, x_type: Option<Type>, value: Expr },
-    Return(Option<Expr>),
-    FunctionDef {
+    VarAssign {
         name: String,
-        params: Vec<Param>,
-        return_type: Option<Type>,
-        body: Vec<Stmt>,
+        x_type: Option<Type>,
+        value: Expr,
     },
+    Return(Option<Expr>),
     Block(Vec<Stmt>),
 }
 
@@ -56,9 +71,14 @@ pub enum Type {
     Float,
     Double,
     String,
-    Vector,
+    Vector(Box<Type>),
     List,
     Char,
     Void,
-    Bool
+    Bool,
+    Any,
+    /// Internal type used to represent packed `...` values.
+    VarArgs,
+    // Represents a reference/value of a function.
+    FunctionRef,
 }

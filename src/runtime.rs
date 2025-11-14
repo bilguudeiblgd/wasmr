@@ -1,5 +1,3 @@
 use wasmtime::*;
 
-pub struct Runtime {
-
-}
+pub struct Runtime {}
