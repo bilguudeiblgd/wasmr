@@ -1,4 +1,4 @@
-use rty_compiler::ast::{Expr, Param, ParamKind, Stmt, Type};
+use rty_compiler::ast::{BinaryOp, Expr, Param, ParamKind, Stmt, Type};
 use rty_compiler::ir::{BuiltinKind, IRExprKind, IRStmt, TypeError, TypeResolver, IR};
 use rty_compiler::lexer::{Lexer, Token};
 use rty_compiler::parser::Parser;
@@ -137,3 +137,194 @@ fn builtin_c_varargs_forwarding() {
         other => panic!("expected function def, got {:?}", other),
     }
 }
+
+
+#[test]
+fn lower_simple_if_without_else() {
+    let prog = parse_program("if (x > 5) { y <- 10 }");
+    let mut resolver = TypeResolver::new();
+    // Need to declare x first since it's used in condition
+    resolver.vars.insert("x".into(), Type::Int);
+
+    let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
+    assert_eq!(ir.len(), 1);
+
+    match &ir[0] {
+        IRStmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            assert_eq!(condition.ty, Type::Bool);
+            assert_eq!(then_branch.len(), 1);
+            match &then_branch[0] {
+                IRStmt::VarAssign { name, ty, .. } => {
+                    assert_eq!(name, "y");
+                    assert_eq!(ty, &Type::Int);
+                }
+                _ => panic!("expected var assign in then branch"),
+            }
+            assert!(else_branch.is_none());
+        }
+        _ => panic!("expected if statement"),
+    }
+}
+
+#[test]
+fn lower_if_with_else() {
+    let prog = parse_program("if (a == b) { x <- 1 } else { x <- 2 }");
+    let mut resolver = TypeResolver::new();
+    // Declare a and b as integers
+    resolver.vars.insert("a".into(), Type::Int);
+    resolver.vars.insert("b".into(), Type::Int);
+
+    let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
+    assert_eq!(ir.len(), 1);
+
+    match &ir[0] {
+        IRStmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            assert_eq!(condition.ty, Type::Bool);
+            assert_eq!(then_branch.len(), 1);
+            match &then_branch[0] {
+                IRStmt::VarAssign { name, ty, value, .. } => {
+                    assert_eq!(name, "x");
+                    assert_eq!(ty, &Type::Int);
+                    assert_eq!(value.ty, Type::Int);
+                }
+                _ => panic!("expected var assign in then branch"),
+            }
+
+            assert!(else_branch.is_some());
+            let else_stmts = else_branch.as_ref().unwrap();
+            assert_eq!(else_stmts.len(), 1);
+            match &else_stmts[0] {
+                IRStmt::VarAssign { name, ty, value, .. } => {
+                    assert_eq!(name, "x");
+                    assert_eq!(ty, &Type::Int);
+                    assert_eq!(value.ty, Type::Int);
+                }
+                _ => panic!("expected var assign in else branch"),
+            }
+        }
+        _ => panic!("expected if statement"),
+    }
+}
+
+
+#[test]
+fn lower_for_loop_with_range() {
+    let prog = parse_program("sum <- 0\nfor (i in 1:10) { sum <- sum + i }");
+    let mut resolver = TypeResolver::new();
+
+    let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
+    assert_eq!(ir.len(), 2);
+
+    // First statement should be sum initialization
+    match &ir[0] {
+        IRStmt::VarAssign { name, ty, .. } => {
+            assert_eq!(name, "sum");
+            assert_eq!(ty, &Type::Int);
+        }
+        _ => panic!("expected var assign"),
+    }
+
+    // Second statement should be the for loop
+    match &ir[1] {
+        IRStmt::For {
+            iter_var: iter_name,
+            iter_expr,
+            body,
+        } => {
+            assert_eq!(iter_name.0, "i");
+            assert_eq!(iter_name.1, Type::Int);
+            assert_eq!(iter_expr.ty, Type::Vector(Box::new(Type::Int)));
+
+            // Check that the range expression is properly typed
+            match &iter_expr.kind {
+                IRExprKind::Binary { left, op, right } => {
+                    assert_eq!(*op, BinaryOp::Range);
+                    assert_eq!(left.ty, Type::Int);
+                    assert_eq!(right.ty, Type::Int);
+                }
+                _ => panic!("expected binary range expression"),
+            }
+
+            // Check the loop body
+            assert_eq!(body.len(), 1);
+            match &body[0] {
+                IRStmt::VarAssign { name, ty, value } => {
+                    assert_eq!(name, "sum");
+                    assert_eq!(ty, &Type::Int);
+                    assert_eq!(value.ty, Type::Int);
+                }
+                _ => panic!("expected var assign in loop body"),
+            }
+        }
+        _ => panic!("expected for statement"),
+    }
+}
+
+#[test]
+fn lower_for_loop_with_vector() {
+    let prog = parse_program("my_vec <- c(1, 2, 3)\nfor (x in my_vec) { print(x) }");
+    let mut resolver = TypeResolver::new();
+
+    let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
+    assert_eq!(ir.len(), 2);
+
+    // First statement should be vector initialization
+    match &ir[0] {
+        IRStmt::VarAssign { name, ty, .. } => {
+            assert_eq!(name, "my_vec");
+            assert_eq!(ty, &Type::Vector(Box::new(Type::Int)));
+        }
+        _ => panic!("expected var assign"),
+    }
+
+    // Second statement should be the for loop
+    match &ir[1] {
+        IRStmt::For {
+            iter_var: iter_name,
+            iter_expr,
+            body,
+        } => {
+            assert_eq!(iter_name.0, "x");
+            assert_eq!(iter_name.1, Type::Int);
+            assert_eq!(iter_expr.ty, Type::Vector(Box::new(Type::Int)));
+
+            // Check that we're iterating over the identifier
+            match &iter_expr.kind {
+                IRExprKind::Identifier(name) => {
+                    assert_eq!(name, "my_vec");
+                }
+                _ => panic!("expected identifier expression"),
+            }
+
+            // Check the loop body contains expression statement with call
+            assert_eq!(body.len(), 1);
+            match &body[0] {
+                IRStmt::ExprStmt(expr) => {
+                    match &expr.kind {
+                        IRExprKind::Call { callee, args } => {
+                            match &callee.kind {
+                                IRExprKind::Identifier(name) => {
+                                    assert_eq!(name, "print");
+                                }
+                                _ => panic!("expected identifier callee"),
+                            }
+                            assert_eq!(args.len(), 1);
+                        }
+                        _ => panic!("expected call expression"),
+                    }
+                }
+                _ => panic!("expected expr stmt in loop body"),
+            }
+        }
+        _ => panic!("expected for statement"),
+    }
+}
+

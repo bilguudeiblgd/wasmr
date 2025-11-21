@@ -1,10 +1,8 @@
 (module
   (type (;0;) (array (mut i32)))
   (type (;1;) (func (param (ref 0) (ref 0)) (result (ref 0))))
-  (type (;2;) (func (param i32 (ref 0) i32) (result i32)))
-  (type (;3;) (func))
-  (export "add" (func 1))
-  (export "_start" (func 2))
+  (type (;2;) (func (result i32)))
+  (export "basic_loop" (func 1))
   (func (;0;) (type 1) (param (ref 0) (ref 0)) (result (ref 0))
     (local i32 i32 i32 (ref 0))
     local.get 0
@@ -42,20 +40,42 @@
     end
     local.get 5
   )
-  (func (;1;) (type 2) (param i32 (ref 0) i32) (result i32)
-    local.get 0
-    local.get 2
-    i32.add
-    return
-  )
-  (func (;2;) (type 3)
-    i32.const 1
+  (func (;1;) (type 2) (result i32)
+    (local i32 i32 i32 (ref 0) i32)
+    i32.const 0
+    local.set 0
     i32.const 1
     i32.const 2
     i32.const 3
-    array.new_fixed 0 3
-    i32.const 2
-    call 1
-    drop
+    i32.const 4
+    i32.const 5
+    array.new_fixed 0 5
+    local.set 3
+    local.get 3
+    array.len
+    local.set 4
+    i32.const 0
+    local.set 2
+    block ;; label = @1
+      loop ;; label = @2
+        local.get 3
+        local.get 2
+        array.get 0
+        local.set 1
+        local.get 0
+        local.get 1
+        i32.add
+        local.set 0
+        local.get 2
+        i32.const 1
+        i32.add
+        local.tee 2
+        local.get 4
+        i32.lt_s
+        br_if 0 (;@2;)
+      end
+    end
+    local.get 0
+    return
   )
 )

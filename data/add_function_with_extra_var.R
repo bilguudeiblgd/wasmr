@@ -1,4 +1,4 @@
-add <- function(a: int, c: vector[int], b: int): int {
+add <- function(a: int, c: vector<int>, b: int): int {
     return (a + b)
 }
 

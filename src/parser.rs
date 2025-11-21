@@ -75,6 +75,15 @@ impl Parser {
         if self.match_token(&Token::Colon) {
             return Some(BinaryOp::Range);
         }
+        if self.match_token(&Token::Equality) {
+            return Some(BinaryOp::Equality)
+        }
+        if self.match_token(&Token::Greater) {
+            return Some(BinaryOp::Greater);
+        }
+        if self.match_token(&Token::GreaterEqual) {
+            return Some(BinaryOp::Greater);
+        }
         None
     }
 
@@ -283,6 +292,8 @@ impl Parser {
             | (Some(Token::RParen), Token::RParen)
             | (Some(Token::LBrace), Token::LBrace)
             | (Some(Token::RBrace), Token::RBrace)
+            | (Some(Token::LBracket), Token::LBracket)
+            | (Some(Token::RBracket), Token::RBracket)
             | (Some(Token::Colon), Token::Colon)
             | (Some(Token::Dot), Token::Dot)
             | (Some(Token::Greater), Token::Greater)
@@ -292,8 +303,15 @@ impl Parser {
             | (Some(Token::AssignArrow), Token::AssignArrow)
             | (Some(Token::Function), Token::Function)
             | (Some(Token::Return), Token::Return)
+            | (Some(Token::Identifier(_)), Token::Identifier(_))
             | (Some(Token::EOF), Token::EOF)
+            | (Some(Token::If), Token::If)
+            | (Some(Token::Else), Token::Else)
+            | (Some(Token::For), Token::For)
+            | (Some(Token::Equality), Token::Equality)
+            | (Some(Token::In), Token::In)
             | (Some(Token::Newline), Token::Newline) => true,
+            | (None, _) => false,
             _ => false,
         }
     }
@@ -313,6 +331,7 @@ impl Parser {
             Ok(())
         } else {
             match self.peek() {
+                // #TODO: make meaning message from this area.
                 Some(t) => Err(ParseError::Unexpected(t.clone())),
                 None => Err(ParseError::Eof),
             }
@@ -341,11 +360,79 @@ impl Parser {
         Ok(stmts)
     }
 
+    pub fn parse_if_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.skip_newlines();
+        self.consume(&Token::LParen)?;
+        self.skip_newlines();
+        let condition = self.parse_expression()?;
+        self.skip_newlines();
+        self.consume(&Token::RParen)?;
+        // #TODO: can have 1 lined expression
+        self.skip_newlines();
+        self.consume(&Token::LBrace)?;
+        self.skip_newlines();
+        let then_branch = self.parse_block_after_lbrace()?;
+        self.skip_newlines();
+        let else_branch;
+        if(self.peek() == Some(&Token::Else) && self.peek_nth(1) == Some(&Token::If) ) {
+            self.consume(&Token::Else)?;
+            self.consume(&Token::If)?;
+            self.skip_newlines();
+
+            if let Ok(embedded_if_statement) = self.parse_if_statement() {
+                else_branch = Some(vec![embedded_if_statement]);
+            } else {
+                panic!("Error parsing embedded if statement");
+            }
+            return Ok(Stmt::If { condition, then_branch, else_branch });
+        }
+        if(self.peek() == Some(&Token::Else)) {
+            self.consume(&Token::Else)?;
+            self.consume(&Token::LBrace)?;
+            else_branch = Some(self.parse_block_after_lbrace()?);
+            return Ok(Stmt::If { condition, then_branch, else_branch });
+        }
+        Ok(Stmt::If { condition, then_branch, else_branch: None })
+    }
+
+    pub fn parse_for_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(&Token::LParen)?;
+        let identifier = match self.peek() {
+            Some(Token::Identifier(str)) => str.clone(),
+            _ => return Err(ParseError::Expected(Token::Identifier("identifier".to_string()))),
+        };
+        self.advance();
+        self.consume(&Token::In)?;
+        
+        if let Ok(expr) = self.parse_expression() {
+            self.consume(&Token::RParen)?;
+            self.skip_newlines();
+            self.consume(&Token::LBrace)?;
+            self.skip_newlines();
+            let body = self.parse_block_after_lbrace()?;
+            return Ok(Stmt::For {
+                iter_name: identifier,
+                iter_vector: expr,
+                body,
+            })
+        }
+        Err(ParseError::Expected(Token::Identifier("expression".to_string())))
+    }
+
     pub fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         // assignment: name <- expr
         if self.lookahead_is_assignment() {
             return self.parse_assignment();
         }
+
+        if(self.match_token(&Token::If)) {
+            return self.parse_if_statement()
+        }
+
+        if self.match_token(&Token::For) {
+            return self.parse_for_statement()
+        }
+
         // return statement
         if self.match_token(&Token::Return) {
             // Allow: return(), return(expr), or return expr

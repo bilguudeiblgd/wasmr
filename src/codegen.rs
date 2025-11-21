@@ -1,14 +1,17 @@
 use crate::ast::{BinaryOp, Param, ParamKind, Stmt as AstStmt, Type};
 use crate::ir::{BuiltinKind, IR, IRExpr, IRExprKind, IRStmt as Stmt, TypeResolver};
 use std::collections::HashMap;
-use wasm_encoder::{BlockType, CodeSection, ExportKind, ExportSection, Function, FunctionSection, HeapType, Instruction, Module, RefType, StorageType, TypeSection, ValType};
+use wasm_encoder::{BlockType, CodeSection, DataSection, ExportKind, ExportSection, Function, FunctionSection, HeapType, Instruction, Module, RefType, StorageType, TypeSection, ValType};
+use wasm_encoder::Instruction::BrIf;
 use wasmtime::StorageType::ValType as StoreValType;
+use crate::ir::IRExprKind::{Binary, VectorLiteral};
 
 pub struct WasmGenerator {
     module: Module,
     pub(crate) types: TypeSection,
     pub(crate) functions: FunctionSection,
     exports: ExportSection,
+    data: DataSection,
     pub(crate) code: CodeSection,
     pub(crate) func_indices: HashMap<String, u32>,
     pub(crate) func_count: u32,
@@ -63,6 +66,7 @@ impl WasmGenerator {
             types: TypeSection::new(),
             functions: FunctionSection::new(),
             exports: ExportSection::new(),
+            data: DataSection::new(),
             code: CodeSection::new(),
             func_indices: HashMap::new(),
             func_count: 0,
@@ -180,6 +184,7 @@ impl WasmGenerator {
     }
 
     /// Collect all variable declarations from statements
+    /// #TODO: move variable collection to IR
     fn collect_vars(&self, stmts: &[Stmt]) -> Vec<(String, Type)> {
         let mut vars = Vec::new();
         for stmt in stmts {
@@ -201,6 +206,35 @@ impl WasmGenerator {
                     self.collect_vars_from_stmt(s, vars);
                 }
             }
+            Stmt::For { iter_var, iter_expr, body, .. } => {
+                let name = iter_var.0.clone();
+                let ty = iter_var.1.clone();
+                if !vars.iter().any(|(n, _)| *n == name) {
+                    vars.push((name.clone(), ty.clone()));
+                }
+
+                // Add system iterator variable
+                if !vars.iter().any(|(n, _)| *n == "system_iter") {
+                    vars.push(("system_iter".to_string(), Type::Int));
+                }
+
+                // Add temporary vector variable to hold the iterable
+                let vector_local_name = format!("__for_vec_{}", iter_var.0);
+                if !vars.iter().any(|(n, _)| n == &vector_local_name) {
+                    vars.push((vector_local_name, Type::Vector(Box::new(ty))));
+                }
+
+                // Add length variable
+                if !vars.iter().any(|(n, _)| *n == "__for_len") {
+                    vars.push(("__for_len".to_string(), Type::Int));
+                }
+
+                // Collect vars from loop body
+                for s in body {
+                    self.collect_vars_from_stmt(s, vars);
+                }
+            }
+
             _ => {}
         }
     }
@@ -242,8 +276,6 @@ impl WasmGenerator {
             return;
         }
         // func.instruction(&)
-        self.gen_expr(func, ctx, left);
-        self.gen_expr(func, ctx, right);
         // func.instruction(&Instruction::Call())
         // Verify both operands have the same type (sanity check)
         // IR should guarantee this, but we check defensively
@@ -256,6 +288,16 @@ impl WasmGenerator {
 
         // Use the left operand's type to determine which instruction to emit
         let ty = &left.ty;
+
+        // sign of bad design
+        if(matches!(op, BinaryOp::Range)) {
+            self.gen_range(func, ctx, left, right);
+            return;
+        }
+
+        self.gen_expr(func, ctx, left);
+        self.gen_expr(func, ctx, right);
+
 
         match op {
             BinaryOp::Plus => {
@@ -306,6 +348,30 @@ impl WasmGenerator {
                     _ => func.instruction(&Instruction::I32LeS),
                 };
             }
+            BinaryOp::Greater => {
+                match ty {
+                    Type::Int => func.instruction(&Instruction::I32GtS),
+                    Type::Float => func.instruction(&Instruction::F32Gt),
+                    Type::Double => func.instruction(&Instruction::F64Gt),
+                    _ => func.instruction(&Instruction::I32GtS),
+                };
+            },
+            BinaryOp::GreaterEqual => {
+                match ty {
+                    Type::Int => func.instruction(&Instruction::I32GeS),
+                    Type::Float => func.instruction(&Instruction::F32Ge),
+                    Type::Double => func.instruction(&Instruction::F64Ge),
+                    _ => func.instruction(&Instruction::I32GeS),
+                };
+            },
+            BinaryOp::Equality => {
+                match ty {
+                    Type::Int => func.instruction(&Instruction::I32Eq),
+                    Type::Float => func.instruction(&Instruction::F32Eq),
+                    Type::Double => func.instruction(&Instruction::F64Eq),
+                    _ => func.instruction(&Instruction::I32Eq),
+                };
+            }
             BinaryOp::Or => {
                 // booleans are represented as i32 0/1
                 func.instruction(&Instruction::I32Or);
@@ -313,11 +379,33 @@ impl WasmGenerator {
             BinaryOp::And => {
                 func.instruction(&Instruction::I32And);
             }
-            BinaryOp::Range => {
-                func.instruction(&Instruction::Drop);
-                func.instruction(&Instruction::I32Const(0));
-            }
+
+            // #TODO: add if statement
+            _ => {}
         }
+    }
+
+    fn gen_range(&mut self, func: &mut Function, ctx: &LocalContext, left: &IRExpr, right: &IRExpr) {
+        let start = match &left.kind {
+            IRExprKind::Number(num) => {
+                 num.parse::<i32>().unwrap()
+            }
+            _ => panic!("Range start must be a number")
+        };
+        let end = match &right.kind {
+            IRExprKind::Number(num) => {
+                num.parse::<i32>().unwrap()
+            }
+            _ => panic!("Range end must be a number")
+        };
+        for i in start..(end + 1) {
+            func.instruction(&Instruction::I32Const(i));
+        }
+        let storage = self.storage_type_for(&Type::Int);
+        let array_type_index = self.ensure_array_type(&storage);
+        let array_size = (end - start + 1) as u32;
+        func.instruction(&Instruction::ArrayNewFixed { array_type_index, array_size });
+
     }
 
     fn gen_expr(&mut self, func: &mut Function, ctx: &LocalContext, expr: &IRExpr) {
@@ -463,6 +551,81 @@ impl WasmGenerator {
                 for s in stmts {
                     self.gen_stmt(func, ctx, s, ret_has_value);
                 }
+            },
+            Stmt::If { condition, then_branch, else_branch } => {
+                self.gen_expr(func, ctx, condition);
+                func.instruction(&Instruction::If(BlockType::Empty));
+                for stmt in then_branch {
+                    self.gen_stmt(func, ctx, stmt, ret_has_value);
+                }
+
+                if(else_branch.is_some()) {
+                    func.instruction(&Instruction::Else);
+                    for stmt in else_branch.as_ref().unwrap() {
+                        self.gen_stmt(func, ctx, stmt, ret_has_value);
+                    }
+                }
+                func.instruction(&Instruction::End);
+
+            }
+
+
+            Stmt::For { iter_var, iter_expr, body } => {
+                let var_name = iter_var.0.clone();
+                let var_ty = iter_var.1.clone();
+                let system_iter = ctx.get_local("system_iter").unwrap();
+                let iter_object = ctx.get_local(&var_name).unwrap();
+
+                // Create a local variable to hold the vector we're iterating over
+                // We need to add this to the context if it doesn't exist
+                let vector_local_name = format!("__for_vec_{}", var_name);
+                let vector_local = ctx.get_local(&vector_local_name)
+                    .expect("Vector local should have been collected");
+
+                // Generate the vector to iterate over
+                self.gen_expr(func, ctx, iter_expr);
+                func.instruction(&Instruction::LocalSet(vector_local));
+
+                // Get the length of the vector
+                func.instruction(&Instruction::LocalGet(vector_local));
+                func.instruction(&Instruction::ArrayLen);
+                let total_iter_local = ctx.get_local("__for_len")
+                    .expect("Length local should have been collected");
+                func.instruction(&Instruction::LocalSet(total_iter_local));
+
+                // Initialize loop counter to 0
+                func.instruction(&Instruction::I32Const(0));
+                func.instruction(&Instruction::LocalSet(system_iter));
+
+                // Block for break
+                func.instruction(&Instruction::Block(BlockType::Empty));
+                // Loop
+                func.instruction(&Instruction::Loop(BlockType::Empty));
+
+                // Get current element from vector: vector[system_iter]
+                func.instruction(&Instruction::LocalGet(vector_local));
+                func.instruction(&Instruction::LocalGet(system_iter));
+                func.instruction(&Instruction::ArrayGet(self.ensure_array_type(&self.storage_type_for(&var_ty))));
+                func.instruction(&Instruction::LocalSet(iter_object));
+
+                // Execute loop body
+                for stmt in body {
+                    self.gen_stmt(func, ctx, stmt, ret_has_value);
+                }
+
+                // Increment counter
+                func.instruction(&Instruction::LocalGet(system_iter));
+                func.instruction(&Instruction::I32Const(1));
+                func.instruction(&Instruction::I32Add);
+                func.instruction(&Instruction::LocalTee(system_iter));
+
+                // Check if we should continue (counter < total_iter)
+                func.instruction(&Instruction::LocalGet(total_iter_local));
+                func.instruction(&Instruction::I32LtS);
+                func.instruction(&Instruction::BrIf(0)); // Continue loop
+
+                func.instruction(&Instruction::End); // End loop
+                func.instruction(&Instruction::End); // End block
             }
         }
     }

@@ -113,6 +113,10 @@ impl Lexer {
                 }
                 '>' => {
                     tokens.push(Token::Greater);
+                    if(self.peek_n(&chars, current, 1) == Some('=')) {
+                        self.consume(&chars, &mut current);
+                        tokens.push(Token::GreaterEqual);
+                    }
                     self.consume(&chars, &mut current);
                 }
                 ':' => {
@@ -127,6 +131,29 @@ impl Lexer {
                     tokens.push(Token::Dot);
                     self.consume(&chars, &mut current);
                 }
+                '=' => {
+                    match self.peek_n(&chars, current, 1) {
+                        None => {
+                            panic!("Unexpected end of file while parsing assignment, '='");
+                        }
+                        Some('=') => {
+                            tokens.push(Token::Equality);
+                            self.consume(&chars, &mut current);
+                            self.consume(&chars, &mut current);
+                        }
+                        Some(_) => {
+                            panic!("Unexpected value after '='");
+                        },
+                    }
+                }
+                '[' => {
+                    tokens.push(Token::LBracket);
+                    self.consume(&chars, &mut current);
+                }
+                ']' => {
+                    tokens.push(Token::RBracket);
+                    self.consume(&chars, &mut current);
+                }
                 '0'..='9' => {
                     let (num, new_current) = self.parse_number(&chars, current);
                     tokens.push(Token::Number(num));
@@ -136,8 +163,16 @@ impl Lexer {
                     let (identifier_name, new_current) = self.parse_identifier(&chars, current);
                     // Keywords
                     match identifier_name.as_str() {
+                        "if" => tokens.push(Token::If),
+                        "else" => tokens.push(Token::Else),
+                        "while" => tokens.push(Token::While),
+                        "repeat" => tokens.push(Token::Repeat),
+                        "for" => tokens.push(Token::For),
+                        "next" => tokens.push(Token::Next),
+                        "break" => tokens.push(Token::Break),
                         "function" => tokens.push(Token::Function),
                         "return" => tokens.push(Token::Return),
+                        "in" => tokens.push(Token::In),
                         // Treat built-in type names specially
                         _ => {
                             if is_builtin_type_name(&identifier_name) {
@@ -221,14 +256,18 @@ pub enum Token {
     Div,
     Or,  // '|'
     And, // '&'
+    Equality,
     LParen,
     RParen,
     LBrace,
     RBrace,
+    LBracket,
+    RBracket,
     Colon,
     Comma,
     Less,
     Greater,  // '>'
+    GreaterEqual,
     LessEqual,
     Dot,
 
@@ -248,11 +287,13 @@ pub enum Token {
     Else,
     While,
     Repeat,
+    For,
     Next,
     Break,
     True,
     False,
     Inf,
+    In,
 
     // Special
     Newline,

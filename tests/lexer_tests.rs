@@ -215,3 +215,65 @@ fn lex_vector_type_in_function_signature() {
         ]
     );
 }
+
+#[test]
+fn lex_if_statement() {
+    let tokens = lex_str(
+        "\
+            x <- 15
+        result <- 0
+
+        if (x > 20) {
+          result <- 1
+        } else if (x == 20) {
+          result <- 2
+        } else {
+          result <- 3
+        }
+
+        result",
+    );
+    let token_without_newlines = tokens.iter().filter(|t| *t != &Token::Newline).map(|t| t.clone()) .collect::<Vec<_>>();
+    assert_eq!(
+        token_without_newlines,
+        vec![
+            Token::Identifier("x".into()),
+            Token::AssignArrow,
+            Token::Number("15".into()),
+            Token::Identifier("result".into()),
+            Token::AssignArrow,
+            Token::Number("0".into()),
+            Token::If,
+            Token::LParen,
+            Token::Identifier("x".into()),
+            Token::Greater,
+            Token::Number("20".into()),
+            Token::RParen,
+            Token::LBrace,
+            Token::Identifier("result".into()),
+            Token::AssignArrow,
+            Token::Number("1".into()),
+            Token::RBrace,
+            Token::Else,
+            Token::If,
+            Token::LParen,
+            Token::Identifier("x".into()),
+            Token::Equality,
+            Token::Number("20".into()),
+            Token::RParen,
+            Token::LBrace,
+            Token::Identifier("result".into()),
+            Token::AssignArrow,
+            Token::Number("2".into()),
+            Token::RBrace,
+            Token::Else,
+            Token::LBrace,
+            Token::Identifier("result".into()),
+            Token::AssignArrow,
+            Token::Number("3".into()),
+            Token::RBrace,
+            Token::Identifier("result".into()),
+            Token::EOF
+        ]
+    );
+}

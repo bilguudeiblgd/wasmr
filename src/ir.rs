@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
-use crate::ast::{BinaryOp, Expr as AstExpr, Expr, Param, ParamKind, Stmt as AstStmt, Type};
 use crate::ast::Type::Vector;
+use crate::ast::{BinaryOp, Expr as AstExpr, Expr, Param, ParamKind, Stmt as AstStmt, Stmt, Type};
+use crate::ir::IRExprKind::VectorLiteral;
 
 /// A typed intermediate representation (IR) used by code generation.
 /// All expressions and declarations in IR have concrete, non-optional types.
@@ -9,6 +10,7 @@ use crate::ast::Type::Vector;
 pub enum BuiltinKind {
     C,
     List,
+    Print
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -50,12 +52,22 @@ pub enum IRStmt {
         ty: Type,
         value: IRExpr,
     },
+    If {
+        condition: IRExpr,
+        then_branch: Vec<IRStmt>,
+        else_branch: Option<Vec<IRStmt>>,
+    },
     /// Return always carries an expression. Use an `IRExpr { kind: Unit, ty: Type::Void }` for `return;`.
     Return(IRExpr),
     FunctionDef {
         name: String,
         params: Vec<Param>,
         return_type: Type,
+        body: Vec<IRStmt>,
+    },
+    For {
+        iter_var: (String, Type),
+        iter_expr: IRExpr,
         body: Vec<IRStmt>,
     },
     Block(Vec<IRStmt>),
@@ -92,7 +104,7 @@ pub type TyResult<T> = Result<T, TypeError>;
 
 pub struct TypeResolver {
     /// Variable environment
-    vars: HashMap<String, Type>,
+    pub vars: HashMap<String, Type>,
     /// Function environment: name -> (param_types, return_type)
     funcs: HashMap<String, (Vec<Param>, Type)>,
     /// Builtin function metadata
@@ -109,6 +121,7 @@ struct FunctionCtx {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 struct BuiltinDescriptor {
     kind: BuiltinKind,
     return_type: Type,
@@ -130,6 +143,13 @@ impl TypeResolver {
                 kind: BuiltinKind::List,
                 return_type: Type::List,
             },
+        );
+        builtins.insert(
+            "print".to_string(),
+            BuiltinDescriptor {
+                kind: BuiltinKind::Print,
+                return_type: Type::Void,
+            }
         );
         Self {
             vars: HashMap::new(),
@@ -196,11 +216,14 @@ impl<'a> LowerCtx<'a> {
         // collect function signatures first so calls can be validated
         for s in &program {
             if let AstStmt::VarAssign { name, value, .. } = s {
-                if let AstExpr::FunctionDef { params, return_type, .. } = value {
+                if let AstExpr::FunctionDef {
+                    params,
+                    return_type,
+                    ..
+                } = value
+                {
                     let ret_ty = return_type.clone().unwrap_or(Type::Void);
-                    self.tr
-                        .funcs
-                        .insert(name.clone(), (params.clone(), ret_ty));
+                    self.tr.funcs.insert(name.clone(), (params.clone(), ret_ty));
                 }
             }
         }
@@ -232,7 +255,12 @@ impl<'a> LowerCtx<'a> {
                 value,
             } => {
                 // Special-case: function literal on RHS defines a named function
-                if let AstExpr::FunctionDef { params, return_type, body } = value {
+                if let AstExpr::FunctionDef {
+                    params,
+                    return_type,
+                    body,
+                } = value
+                {
                     let ret_ty = return_type.unwrap_or(Type::Void);
                     // Set up new scope for function variables
                     let saved_vars = self.tr.vars.clone();
@@ -327,6 +355,43 @@ impl<'a> LowerCtx<'a> {
                 let body = self.lower_block(stmts)?;
                 Ok(IRStmt::Block(body))
             }
+            AstStmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                Ok(IRStmt::If {
+                    condition: self.lower_expr(condition)?,
+                    then_branch: self.lower_block(then_branch)?,
+                    else_branch: else_branch.map(|b| self.lower_block(b)).transpose()? ,
+                })
+            },
+
+            AstStmt::For {
+                iter_name,
+                iter_vector,
+                body
+            } => {
+                let iter_expr = self.lower_expr(iter_vector)?;
+                if let Vector(inner_box) = &iter_expr.ty {
+                    let inner_ty = (*inner_box).clone();
+                    self.tr.vars.insert(iter_name.clone(), *inner_ty.clone() );
+                    return Ok(IRStmt::For {
+                        iter_var: (iter_name, *inner_ty),
+                        iter_expr,
+                        body: self.lower_block(body)?,
+                    });
+                }
+                if matches!(&iter_expr.ty, Vector(some)) {
+
+                }
+
+                Err(TypeError::TypeMismatch {
+                    expected: Vector(Type::Int.into()),
+                    found: iter_expr.ty,
+                    context: format!("for loop iterator {}", iter_name),
+                })
+            }
         }
     }
 
@@ -359,15 +424,13 @@ impl<'a> LowerCtx<'a> {
                     Err(TypeError::UnknownVariable(name))
                 }
             }
-            AstExpr::VarArgs => {
-                match &self.tr.current_function {
-                    Some(ctx) if ctx.varargs_name.is_some() => Ok(IRExpr {
-                        kind: IRExprKind::VarArgs,
-                        ty: Type::VarArgs,
-                    }),
-                    _ => Err(TypeError::UnknownVariable("...".to_string())),
-                }
-            }
+            AstExpr::VarArgs => match &self.tr.current_function {
+                Some(ctx) if ctx.varargs_name.is_some() => Ok(IRExpr {
+                    kind: IRExprKind::VarArgs,
+                    ty: Type::VarArgs,
+                }),
+                _ => Err(TypeError::UnknownVariable("...".to_string())),
+            },
             AstExpr::XString(s) => Ok(IRExpr {
                 kind: IRExprKind::XString(s),
                 ty: Type::String,
@@ -384,7 +447,7 @@ impl<'a> LowerCtx<'a> {
                 match op {
                     BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div => {
                         // #TODO: promotion for numerics inside vector or composite types
-                        if(matches!(l.ty, Vector(_)) || matches!(r.ty, Vector(_))) {
+                        if (matches!(l.ty, Vector(_)) || matches!(r.ty, Vector(_))) {
                             return Ok(IRExpr {
                                 kind: IRExprKind::Binary {
                                     left: Box::new(l.clone()),
@@ -392,7 +455,7 @@ impl<'a> LowerCtx<'a> {
                                     right: Box::new(r.clone()),
                                 },
                                 ty: l.ty,
-                            })
+                            });
                         }
                         let res_ty = self.tr.unify_numeric(&l.ty, &r.ty)?;
                         let l2 = ensure_ty(l, res_ty.clone());
@@ -406,7 +469,7 @@ impl<'a> LowerCtx<'a> {
                             ty: res_ty,
                         })
                     }
-                    BinaryOp::Less | BinaryOp::LessEqual => {
+                    BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual | BinaryOp::Equality => {
                         let _ = self.tr.unify_numeric(&l.ty, &r.ty)?;
                         Ok(IRExpr {
                             kind: IRExprKind::Binary {
@@ -435,13 +498,29 @@ impl<'a> LowerCtx<'a> {
                             })
                         }
                     }
-                    _ => {
-                        Err(TypeError::UnsupportedOperation {
-                            op: format!("{:?}", op),
-                            left: l.ty,
-                            right: r.ty,
-                        })
+                    BinaryOp::Range => {
+                        if l.ty == Type::Int && r.ty == Type::Int {
+                            Ok(IRExpr {
+                                kind: IRExprKind::Binary {
+                                    left: Box::new(l),
+                                    op,
+                                    right: Box::new(r),
+                                },
+                                ty: Vector(Type::Int.into()),
+                            })
+                        } else {
+                            Err(TypeError::UnsupportedOperation {
+                                op: format!("{:?}", op),
+                                left: l.ty,
+                                right: r.ty,
+                            })
+                        }
                     }
+                    _ => Err(TypeError::UnsupportedOperation {
+                        op: format!("{:?}", op),
+                        left: l.ty,
+                        right: r.ty,
+                    }),
                 }
             }
             AstExpr::Call { callee, args } => match *callee {
@@ -478,7 +557,9 @@ impl<'a> LowerCtx<'a> {
                     }
 
                     let mut ir_args = Vec::with_capacity(args.len());
-                    for (i, (arg_ast, param)) in args.into_iter().zip(params.into_iter()).enumerate() {
+                    for (i, (arg_ast, param)) in
+                        args.into_iter().zip(params.into_iter()).enumerate()
+                    {
                         let a_ir = self.lower_expr(arg_ast)?;
                         let expected_ty = match param.kind {
                             ParamKind::Normal(ty) => ty,
@@ -528,6 +609,7 @@ impl<'a> LowerCtx<'a> {
         let name = match kind {
             BuiltinKind::C => "c",
             BuiltinKind::List => "list",
+            BuiltinKind::Print => "print",
         };
 
         if args.is_empty() {
@@ -580,7 +662,10 @@ impl<'a> LowerCtx<'a> {
             BuiltinKind::List => {
                 if has_varargs {
                     return Ok(IRExpr {
-                        kind: IRExprKind::BuiltinCall { builtin: kind, args },
+                        kind: IRExprKind::BuiltinCall {
+                            builtin: kind,
+                            args,
+                        },
                         ty: return_ty,
                     });
                 }
@@ -601,9 +686,15 @@ impl<'a> LowerCtx<'a> {
                 }
 
                 Ok(IRExpr {
-                    kind: IRExprKind::BuiltinCall { builtin: kind, args },
+                    kind: IRExprKind::BuiltinCall {
+                        builtin: kind,
+                        args,
+                    },
                     ty: return_ty,
                 })
+            }
+            _ => {
+                unimplemented!("lowering builtin call {:?}", descriptor);
             }
         }
     }

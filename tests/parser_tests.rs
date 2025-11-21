@@ -348,3 +348,169 @@ fn parse_complex_function_with_vectors() {
     }
 }
 
+#[test]
+fn parse_if_statement() {
+    let prog = parse_program(
+        " x <- 15
+        result <- 0
+
+        if (x > 20) {
+          result <- 1
+        } else if (x == 20) {
+          result <- 2
+        } else {
+          result <- 3
+        }
+
+        result"
+    );  
+    assert_eq!(prog.len(), 4);
+    assert_eq!(prog[0], Stmt::VarAssign { name: "x".into(), x_type: None, value: Expr::Number("15".into()) });
+    assert_eq!(prog[1], Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("0".into()) });
+    assert_eq!(prog[2], Stmt::If { condition: Expr::Binary { left: Box::new(Expr::Identifier("x".into())),op: BinaryOp::Greater, right: Box::new(Expr::Number("20".into())) }, 
+        then_branch: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("1".into()) }], 
+        else_branch: Some(
+            vec![Stmt::If { condition: Expr::Binary { left: Box::new(Expr::Identifier("x".into())), op: BinaryOp::Equality, right: Box::new(Expr::Number("20".into())) },
+            then_branch: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("2".into()) }],
+            else_branch: Some(vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("3".into()) }])
+            }]
+        ) });
+    assert_eq!(prog[3], Stmt::ExprStmt(Expr::Identifier("result".into())));
+    
+}
+
+
+#[test]
+fn parse_simple_if_without_else() {
+    let stmt = parse_stmt("if (x > 5) { y <- 10 }");
+    match stmt {
+        Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            assert_eq!(
+                condition,
+                Expr::Binary {
+                    left: Box::new(Expr::Identifier("x".into())),
+                    op: BinaryOp::Greater,
+                    right: Box::new(Expr::Number("5".into())),
+                }
+            );
+            assert_eq!(then_branch.len(), 1);
+            assert_eq!(
+                then_branch[0],
+                Stmt::VarAssign {
+                    name: "y".into(),
+                    x_type: None,
+                    value: Expr::Number("10".into())
+                }
+            );
+            assert!(else_branch.is_none());
+        }
+        _ => panic!("expected if statement"),
+    }
+}
+
+#[test]
+fn parse_if_with_else() {
+    let stmt = parse_stmt("if (a == b) { x <- 1 } else { x <- 2 }");
+    match stmt {
+        Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            assert_eq!(
+                condition,
+                Expr::Binary {
+                    left: Box::new(Expr::Identifier("a".into())),
+                    op: BinaryOp::Equality,
+                    right: Box::new(Expr::Identifier("b".into())),
+                }
+            );
+            assert_eq!(then_branch.len(), 1);
+            assert_eq!(
+                then_branch[0],
+                Stmt::VarAssign {
+                    name: "x".into(),
+                    x_type: None,
+                    value: Expr::Number("1".into())
+                }
+            );
+            assert!(else_branch.is_some());
+            let else_stmts = else_branch.unwrap();
+            assert_eq!(else_stmts.len(), 1);
+            assert_eq!(
+                else_stmts[0],
+                Stmt::VarAssign {
+                    name: "x".into(),
+                    x_type: None,
+                    value: Expr::Number("2".into())
+                }
+            );
+        }
+        _ => panic!("expected if statement"),
+    }
+}
+
+
+#[test]
+fn parse_for_loop_with_range() {
+    let stmt = parse_stmt("for (i in 1:10) { sum <- sum + i }");
+    match stmt {
+        Stmt::For {
+            iter_name,
+            iter_vector,
+            body,
+        } => {
+            assert_eq!(iter_name, "i");
+            assert_eq!(
+                iter_vector,
+                Expr::Binary {
+                    left: Box::new(Expr::Number("1".into())),
+                    op: BinaryOp::Range,
+                    right: Box::new(Expr::Number("10".into())),
+                }
+            );
+            assert_eq!(body.len(), 1);
+            assert_eq!(
+                body[0],
+                Stmt::VarAssign {
+                    name: "sum".into(),
+                    x_type: None,
+                    value: Expr::Binary {
+                        left: Box::new(Expr::Identifier("sum".into())),
+                        op: BinaryOp::Plus,
+                        right: Box::new(Expr::Identifier("i".into())),
+                    }
+                }
+            );
+        }
+        _ => panic!("expected for statement"),
+    }
+}
+
+#[test]
+fn parse_for_loop_with_vector() {
+    let stmt = parse_stmt("for (x in my_vec) { print(x) }");
+    match stmt {
+        Stmt::For {
+            iter_name,
+            iter_vector,
+            body,
+        } => {
+            assert_eq!(iter_name, "x");
+            assert_eq!(iter_vector, Expr::Identifier("my_vec".into()));
+            assert_eq!(body.len(), 1);
+            assert_eq!(
+                body[0],
+                Stmt::ExprStmt(Expr::Call {
+                    callee: Box::new(Expr::Identifier("print".into())),
+                    args: vec![Expr::Identifier("x".into())]
+                })
+            );
+        }
+        _ => panic!("expected for statement"),
+    }
+}

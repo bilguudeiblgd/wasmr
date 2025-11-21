@@ -5,8 +5,11 @@ pub enum BinaryOp {
     Minus,
     Mul,
     Div,
+    Equality,
     Less,
     LessEqual,
+    Greater,
+    GreaterEqual,
     Range, // for ':' operator
     Or,    // '|'
     And,   // '&'
@@ -60,6 +63,17 @@ pub enum Stmt {
         name: String,
         x_type: Option<Type>,
         value: Expr,
+    },
+    If {
+        condition: Expr,
+        then_branch: Vec<Stmt>,
+        else_branch: Option<Vec<Stmt>>,
+    },
+    For {
+        iter_name: String,
+        // either range exp or vector exp
+        iter_vector: Expr,
+        body: Vec<Stmt>,
     },
     Return(Option<Expr>),
     Block(Vec<Stmt>),
