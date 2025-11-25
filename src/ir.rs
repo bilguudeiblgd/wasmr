@@ -693,8 +693,30 @@ impl<'a> LowerCtx<'a> {
                     ty: return_ty,
                 })
             }
-            _ => {
-                unimplemented!("lowering builtin call {:?}", descriptor);
+            BuiltinKind::Print => {
+                if args.len() != 1 {
+                    return Err(TypeError::ArityMismatch {
+                        func: name.to_string(),
+                        expected: 1,
+                        found: args.len(),
+                    });
+                }
+
+                if args[0].ty != Type::Int {
+                    return Err(TypeError::TypeMismatch {
+                        expected: Type::Int,
+                        found: args[0].ty.clone(),
+                        context: format!("print argument"),
+                    });
+                }
+
+                Ok(IRExpr {
+                    kind: IRExprKind::BuiltinCall {
+                        builtin: kind,
+                        args,
+                    },
+                    ty: return_ty,
+                })
             }
         }
     }
