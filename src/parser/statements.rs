@@ -80,9 +80,40 @@ impl Parser {
     }
 
     pub fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
-        // assignment: name <- expr
+        // assignment: name <- expr OR name[index] <- expr
         if self.lookahead_is_assignment() {
-            return self.parse_assignment();
+            // Parse the left side as an expression
+            let lhs = self.parse_call()?;
+
+            // Determine if it's a regular assignment or index assignment
+            match lhs {
+                Expr::Identifier(name) => {
+                    // Regular variable assignment with optional type annotation
+                    let x_type = if self.match_token(&Token::Colon) {
+                        Some(self.parse_x_type()?)
+                    } else {
+                        None
+                    };
+                    self.consume(&Token::AssignArrow)?;
+                    let value = self.parse_expression()?;
+                    return Ok(Stmt::VarAssign { name, x_type, value });
+                }
+                Expr::Index { target, index } => {
+                    // Index assignment (no type annotation allowed)
+                    self.consume(&Token::AssignArrow)?;
+                    let value = self.parse_expression()?;
+                    return Ok(Stmt::IndexAssign {
+                        target: *target,
+                        index: *index,
+                        value,
+                    });
+                }
+                _ => {
+                    return Err(ParseError::UnexpectedExplained(
+                        "Invalid assignment target (expected identifier or index)".to_string(),
+                    ));
+                }
+            }
         }
 
         if self.match_token(&Token::If) {
@@ -214,8 +245,34 @@ impl Parser {
     }
 
     pub(crate) fn lookahead_is_assignment(&self) -> bool {
-        matches!(self.peek(), Some(Token::Identifier(_)))
-            && (matches!(self.peek_nth(1), Some(Token::AssignArrow))
-                || matches!(self.peek_nth(1), Some(Token::Colon)))
+        if matches!(self.peek(), Some(Token::Identifier(_))) {
+            // Check: ident <- or ident: type <-
+            if matches!(self.peek_nth(1), Some(Token::AssignArrow) | Some(Token::Colon)) {
+                return true;
+            }
+            // Check: ident[...] <-
+            if matches!(self.peek_nth(1), Some(Token::LBracket)) {
+                return self.lookahead_has_arrow_after_brackets();
+            }
+        }
+        false
+    }
+
+    fn lookahead_has_arrow_after_brackets(&self) -> bool {
+        let mut pos = 2; // Start after "identifier["
+        let mut bracket_depth = 1;
+
+        while bracket_depth > 0 {
+            match self.peek_nth(pos) {
+                Some(Token::LBracket) => bracket_depth += 1,
+                Some(Token::RBracket) => bracket_depth -= 1,
+                Some(Token::EOF) | None => return false,
+                _ => {}
+            }
+            pos += 1;
+        }
+
+        // After closing ], check for <-
+        matches!(self.peek_nth(pos), Some(Token::AssignArrow))
     }
 }

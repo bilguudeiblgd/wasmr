@@ -34,6 +34,28 @@ impl WasmGenerator {
             IRExprKind::BuiltinCall { builtin, args } => {
                 self.compile_builtin_call(func, ctx, builtin, args);
             }
+            IRExprKind::Index { target, index } => {
+                // Generate target (leaves vector ref on stack)
+                self.gen_expr(func, ctx, target);
+
+                // Generate index (leaves 1-based i32 on stack)
+                self.gen_expr(func, ctx, index);
+
+                // Convert 1-based to 0-based: index - 1
+                func.instruction(&Instruction::I32Const(1));
+                func.instruction(&Instruction::I32Sub);
+
+                // Get array type index for element type
+                let elem_ty = match &target.ty {
+                    Type::Vector(inner) => &**inner,
+                    _ => panic!("Type checker should prevent non-vector indexing"),
+                };
+                let storage = self.storage_type_for(elem_ty);
+                let array_type_index = self.ensure_array_type(&storage);
+
+                // Emit ArrayGet: pops [array_ref, i32_index], pushes [element_value]
+                func.instruction(&Instruction::ArrayGet(array_type_index));
+            }
             IRExprKind::XString(_s) => {
                 func.instruction(&Instruction::I32Const(0));
             }

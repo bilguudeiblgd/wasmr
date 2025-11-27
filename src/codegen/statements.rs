@@ -115,6 +115,32 @@ impl WasmGenerator {
                 func.instruction(&Instruction::End); // End loop
                 func.instruction(&Instruction::End); // End block
             }
+            Stmt::IndexAssign { target, index, value } => {
+                // Generate target (vector ref)
+                self.gen_expr(func, ctx, target);
+
+                // Generate index (1-based i32)
+                self.gen_expr(func, ctx, index);
+
+                // Convert 1-based to 0-based: index - 1
+                func.instruction(&Instruction::I32Const(1));
+                func.instruction(&Instruction::I32Sub);
+
+                // Generate value
+                self.gen_expr(func, ctx, value);
+
+                // Get array type index
+                use crate::ast::Type;
+                let elem_ty = match &target.ty {
+                    Type::Vector(inner) => &**inner,
+                    _ => panic!("Type checker should prevent non-vector indexing"),
+                };
+                let storage = self.storage_type_for(elem_ty);
+                let array_type_index = self.ensure_array_type(&storage);
+
+                // Emit ArraySet: pops [array_ref, i32_index, value], pushes nothing
+                func.instruction(&Instruction::ArraySet(array_type_index));
+            }
         }
     }
 }

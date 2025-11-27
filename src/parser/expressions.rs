@@ -137,6 +137,13 @@ impl Parser {
                     callee: Box::new(expr),
                     args,
                 };
+            } else if self.match_token(&Token::LBracket) {
+                let index = self.parse_expression()?;
+                self.consume(&Token::RBracket)?;
+                expr = Expr::Index {
+                    target: Box::new(expr),
+                    index: Box::new(index),
+                };
             } else {
                 break;
             }

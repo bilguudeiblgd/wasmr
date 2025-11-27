@@ -39,6 +39,10 @@ pub enum Expr {
         callee: Box<Expr>,
         args: Vec<Expr>,
     },
+    Index {
+        target: Box<Expr>,
+        index: Box<Expr>,
+    },
     Grouping(Box<Expr>),
 }
 
@@ -74,6 +78,11 @@ pub enum Stmt {
         // either range exp or vector exp
         iter_vector: Expr,
         body: Vec<Stmt>,
+    },
+    IndexAssign {
+        target: Expr,
+        index: Expr,
+        value: Expr,
     },
     Return(Option<Expr>),
     Block(Vec<Stmt>),

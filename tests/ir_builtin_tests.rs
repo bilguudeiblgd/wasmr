@@ -328,3 +328,64 @@ fn lower_for_loop_with_vector() {
     }
 }
 
+#[test]
+fn lower_vector_index_read() {
+    let prog = parse_program("v <- c(10, 20, 30)\nx <- v[2]");
+    let mut resolver = TypeResolver::new();
+
+    let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
+    assert_eq!(ir.len(), 2);
+
+    // Second statement should be the index read
+    match &ir[1] {
+        IRStmt::VarAssign { name, ty, value } => {
+            assert_eq!(name, "x");
+            assert_eq!(ty, &Type::Int); // Element type should be extracted
+
+            // Check the index expression
+            match &value.kind {
+                IRExprKind::Index { target, index } => {
+                    assert_eq!(target.ty, Type::Vector(Box::new(Type::Int)));
+                    assert_eq!(index.ty, Type::Int);
+                    assert_eq!(value.ty, Type::Int); // Result type is element type
+                }
+                other => panic!("expected index expression, got {:?}", other),
+            }
+        }
+        other => panic!("expected var assign, got {:?}", other),
+    }
+}
+
+#[test]
+fn lower_vector_index_assign() {
+    let prog = parse_program("v <- c(1, 2, 3)\nv[2] <- 99");
+    let mut resolver = TypeResolver::new();
+
+    let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
+    assert_eq!(ir.len(), 2);
+
+    // Second statement should be the index assignment
+    match &ir[1] {
+        IRStmt::IndexAssign { target, index, value } => {
+            assert_eq!(target.ty, Type::Vector(Box::new(Type::Int)));
+            assert_eq!(index.ty, Type::Int);
+            assert_eq!(value.ty, Type::Int);
+        }
+        other => panic!("expected index assign, got {:?}", other),
+    }
+}
+
+#[test]
+fn lower_vector_index_rejects_non_vector() {
+    let prog = parse_program("x <- 42\ny <- x[1]");
+    let mut resolver = TypeResolver::new();
+
+    let err = IR::from_ast(prog, &mut resolver).expect_err("expected type error");
+    match err {
+        TypeError::InvalidIndexTarget { target_type, .. } => {
+            assert_eq!(target_type, Type::Int);
+        }
+        other => panic!("expected InvalidIndexTarget, got {:?}", other),
+    }
+}
+

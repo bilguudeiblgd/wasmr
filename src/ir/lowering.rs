@@ -200,6 +200,45 @@ impl<'a> LowerCtx<'a> {
                     context: format!("for loop iterator {}", iter_name),
                 })
             }
+            AstStmt::IndexAssign { target, index, value } => {
+                let target_ir = self.lower_expr(target)?;
+                let index_ir = self.lower_expr(index)?;
+                let value_ir = self.lower_expr(value)?;
+
+                match &target_ir.ty {
+                    Type::Vector(elem_ty_box) => {
+                        let elem_ty = (**elem_ty_box).clone();
+
+                        // Validate index is Int
+                        if index_ir.ty != Type::Int {
+                            return Err(TypeError::InvalidIndexType {
+                                index_type: index_ir.ty,
+                                context: "vector index assignment".to_string(),
+                            });
+                        }
+
+                        // Validate value matches element type
+                        let value_ir2 = ensure_ty(value_ir, elem_ty.clone());
+                        if value_ir2.ty != elem_ty {
+                            return Err(TypeError::TypeMismatch {
+                                expected: elem_ty,
+                                found: value_ir2.ty,
+                                context: "index assignment value".to_string(),
+                            });
+                        }
+
+                        Ok(IRStmt::IndexAssign {
+                            target: target_ir,
+                            index: index_ir,
+                            value: value_ir2,
+                        })
+                    }
+                    other => Err(TypeError::InvalidIndexTarget {
+                        target_type: other.clone(),
+                        context: "index assignment target must be vector".to_string(),
+                    }),
+                }
+            }
         }
     }
 
@@ -404,6 +443,37 @@ impl<'a> LowerCtx<'a> {
                     })
                 }
             },
+            AstExpr::Index { target, index } => {
+                let target_ir = self.lower_expr(*target)?;
+                let index_ir = self.lower_expr(*index)?;
+
+                // Extract element type from Vector<T>
+                match &target_ir.ty {
+                    Type::Vector(elem_ty_box) => {
+                        let elem_ty = (**elem_ty_box).clone();
+
+                        // Validate index is Int
+                        if index_ir.ty != Type::Int {
+                            return Err(TypeError::InvalidIndexType {
+                                index_type: index_ir.ty,
+                                context: "vector indexing".to_string(),
+                            });
+                        }
+
+                        Ok(IRExpr {
+                            kind: IRExprKind::Index {
+                                target: Box::new(target_ir),
+                                index: Box::new(index_ir),
+                            },
+                            ty: elem_ty, // Result type is element type!
+                        })
+                    }
+                    other => Err(TypeError::InvalidIndexTarget {
+                        target_type: other.clone(),
+                        context: "only vectors can be indexed".to_string(),
+                    }),
+                }
+            }
         }
     }
 

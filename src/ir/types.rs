@@ -28,6 +28,10 @@ pub enum IRExprKind {
         builtin: BuiltinKind,
         args: Vec<IRExpr>,
     },
+    Index {
+        target: Box<IRExpr>,
+        index: Box<IRExpr>,
+    },
     /// Represents the packed `...` array/local in functions with varargs.
     VarArgs,
     /// Represents no value (used for void returns). Always has Type::Void.
@@ -66,6 +70,11 @@ pub enum IRStmt {
         iter_expr: IRExpr,
         body: Vec<IRStmt>,
     },
+    IndexAssign {
+        target: IRExpr,
+        index: IRExpr,
+        value: IRExpr,
+    },
     Block(Vec<IRStmt>),
 }
 
@@ -88,6 +97,14 @@ pub enum TypeError {
         op: String,
         left: Type,
         right: Type,
+    },
+    InvalidIndexTarget {
+        target_type: Type,
+        context: String,
+    },
+    InvalidIndexType {
+        index_type: Type,
+        context: String,
     },
     MissingReturnValue {
         function: String,
