@@ -75,6 +75,10 @@ pub enum Stmt {
         iter_vector: Expr,
         body: Vec<Stmt>,
     },
+    While {
+        condition: Expr,
+        body: Vec<Stmt>,
+    },
     Return(Option<Expr>),
     Block(Vec<Stmt>),
 }

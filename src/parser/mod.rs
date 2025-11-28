@@ -67,6 +67,7 @@ impl Parser {
             | (Some(Token::If), Token::If)
             | (Some(Token::Else), Token::Else)
             | (Some(Token::For), Token::For)
+            | (Some(Token::While), Token::While)
             | (Some(Token::Equality), Token::Equality)
             | (Some(Token::In), Token::In)
             | (Some(Token::Newline), Token::Newline) => true,
