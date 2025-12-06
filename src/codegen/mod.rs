@@ -1,25 +1,21 @@
 mod type_mapping;
 mod local_context;
 mod wasi;
-mod var_collector;
 mod binary_ops;
 mod expressions;
 mod builtins;
 mod statements;
 pub mod io;
+pub mod codegen_builtins;
 
 // Re-export public API
-pub use io::{compile_to_wasm, compile_to_wasm_ir, wasm_to_wat, write_wasm_file, write_wat_file, compile_and_write, compile_and_write_ir};
+pub use io::{compile_and_write, compile_and_write_ir, compile_to_wasm, compile_to_wasm_ir, wasm_to_wat, write_wasm_file, write_wat_file};
 
-use crate::ast::{BinaryOp, Param, ParamKind, Stmt as AstStmt, Type};
+use crate::ast::{Param, Type};
 use local_context::LocalContext;
-use crate::ir::{BuiltinKind, IR, IRExpr, IRExprKind, IRStmt as Stmt, TypeResolver};
+use crate::ir::{IRProgram, IRStmt as Stmt};
 use std::collections::HashMap;
-use wasm_encoder::{BlockType, CodeSection, DataSection, ExportKind, ExportSection, Function, FunctionSection, HeapType, Instruction, ImportSection, MemorySection, MemoryType, Module, RefType, StorageType, TypeSection, ValType, EntityType};
-use wasm_encoder::Instruction::BrIf;
-use wasmtime::StorageType::ValType as StoreValType;
-use crate::ir::IRExprKind::{Binary, VectorLiteral};
-
+use wasm_encoder::{CodeSection, DataSection, ExportKind, ExportSection, Function, FunctionSection, ImportSection, Instruction, MemorySection, Module, TypeSection, ValType};
 pub struct WasmGenerator {
     module: Module,
     pub(crate) types: TypeSection,
@@ -31,7 +27,7 @@ pub struct WasmGenerator {
     pub(crate) code: CodeSection,
     pub(crate) func_indices: HashMap<String, u32>,
     pub(crate) func_count: u32,
-    fd_write_idx: Option<u32>,
+    pub(crate) fd_write_idx: Option<u32>,
     array_type_i32: Option<u32>,
     array_type_f32: Option<u32>,
     array_type_f64: Option<u32>,
@@ -59,28 +55,33 @@ impl WasmGenerator {
         }
     }
 
-    pub fn compile_program(&mut self, program: Vec<Stmt>) -> Vec<u8> {
+    pub fn compile_program(&mut self, program: IRProgram) -> Vec<u8> {
         // Setup WASI imports (fd_write) and memory
         self.setup_wasi_imports();
 
         // Split into function defs and top-level statements
         self.include_builtins();
 
-        let mut functions: Vec<(String, Vec<Param>, Type, Vec<Stmt>)> = Vec::new();
+        let program_stmts = &program.statements;
+        let mut functions: Vec<(String, Vec<Param>, Type, Vec<Stmt>, Box<crate::ir::FunctionMetadata>)> = Vec::new();
         let mut top_level: Vec<Stmt> = Vec::new();
-        for s in &program {
+        for s in program_stmts {
             if let Stmt::FunctionDef {
                 name,
                 params,
                 return_type,
                 body,
+                metadata,
             } = s
             {
+                // Metadata must be present at this point (populated by passes)
+                let meta = metadata.as_ref().expect("Function metadata must be populated by IR passes");
                 functions.push((
                     name.clone(),
                     params.clone(),
                     return_type.clone(),
                     body.clone(),
+                    meta.clone(),
                 ));
             } else {
                 top_level.push(s.clone());
@@ -88,7 +89,7 @@ impl WasmGenerator {
         }
 
         // First pass: declare all function types
-        for (name, params, ret_ty, _body) in &functions {
+        for (name, params, ret_ty, _body, _metadata) in &functions {
             let param_tys: Vec<ValType> = params.iter().map( |p|self.wasm_param_valtype(p)).collect();
             let result_tys: Vec<ValType> = if *ret_ty != Type::Void {
                 vec![self.wasm_valtype(ret_ty)]
@@ -123,24 +124,22 @@ impl WasmGenerator {
         }
 
         // Second pass: define function bodies
-        for (_name, params, ret_ty, body) in &functions {
+        for (_name, params, ret_ty, body, metadata) in &functions {
             let ret_has_value = *ret_ty != Type::Void;
 
-            // Collect local variables
-            let vars = self.collect_vars(body);
-            let local_types: Vec<(u32, ValType)> = vars
+            // Use precomputed metadata instead of collecting vars
+            let param_count = params.len() as u32;
+            let non_param_vars = &metadata.local_vars[param_count as usize..];
+
+            let local_types: Vec<(u32, ValType)> = non_param_vars
                 .iter()
-                .map(|(_, ty)| (1, self.wasm_valtype(ty)))
+                .map(|var_info| (1, self.wasm_valtype(&var_info.ty)))
                 .collect();
 
             let mut f = Function::new(local_types);
 
-            // Build local context
-            let mut ctx = LocalContext::new(params.clone());
-            let param_count = params.len() as u32;
-            for (i, (var_name, _)) in vars.iter().enumerate() {
-                ctx.add_local(var_name.clone(), param_count + i as u32);
-            }
+            // Build local context from metadata
+            let ctx = LocalContext::from_metadata(metadata);
 
             // Generate statements
             for stmt in body {
@@ -184,7 +183,7 @@ impl WasmGenerator {
         self.exports.export("memory", ExportKind::Memory, 0);
 
         // Export functions
-        for (name, _p, _r, _b) in &functions {
+        for (name, _p, _r, _b, _m) in &functions {
             if let Some(&idx) = self.func_indices.get(name) {
                 self.exports.export(name, ExportKind::Func, idx);
             }
@@ -201,5 +200,61 @@ impl WasmGenerator {
         self.module.section(&self.exports);
         self.module.section(&self.code);
         self.module.clone().finish()
+    }
+
+    /// Simple variable collector for top-level statements (without metadata)
+    /// This is only used for synthetic main functions
+    fn collect_vars(&self, stmts: &[Stmt]) -> Vec<(String, Type)> {
+        use std::collections::HashSet;
+        let mut vars = Vec::new();
+        let mut seen = HashSet::new();
+
+        fn collect_from_stmts(
+            stmts: &[Stmt],
+            vars: &mut Vec<(String, Type)>,
+            seen: &mut HashSet<String>,
+        ) {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::VarAssign { name, ty, .. } => {
+                        if !seen.contains(name) {
+                            vars.push((name.clone(), ty.clone()));
+                            seen.insert(name.clone());
+                        }
+                    }
+                    Stmt::Block(body) => collect_from_stmts(body, vars, seen),
+                    Stmt::If { then_branch, else_branch, .. } => {
+                        collect_from_stmts(then_branch, vars, seen);
+                        if let Some(else_stmts) = else_branch {
+                            collect_from_stmts(else_stmts, vars, seen);
+                        }
+                    }
+                    Stmt::For { iter_var, body, .. } => {
+                        let (iter_name, iter_ty) = iter_var;
+                        if !seen.contains(iter_name) {
+                            vars.push((iter_name.clone(), iter_ty.clone()));
+                            seen.insert(iter_name.clone());
+                        }
+                        // Add compiler temporaries for loops
+                        let system_vars = vec![
+                            ("system_iter".to_string(), Type::Int),
+                            (format!("__for_vec_{}", iter_name), Type::Vector(Box::new(iter_ty.clone()))),
+                            ("__for_len".to_string(), Type::Int),
+                        ];
+                        for (name, ty) in system_vars {
+                            if !seen.contains(&name) {
+                                vars.push((name.clone(), ty));
+                                seen.insert(name);
+                            }
+                        }
+                        collect_from_stmts(body, vars, seen);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        collect_from_stmts(stmts, &mut vars, &mut seen);
+        vars
     }
 }

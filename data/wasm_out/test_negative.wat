@@ -123,45 +123,12 @@
     local.get 5
   )
   (func (;4;) (type 5)
-    (local i32 i32)
+    (local i32)
+    i32.const 0
     i32.const 42
+    i32.sub
     local.set 0
     local.get 0
-    call 2
-    call 1
-    i32.const 12
-    i32.const 10
-    i32.store8
-    i32.const 12
-    i32.const 1
-    call 1
-    i32.const 0
-    drop
-    i32.const 7
-    local.set 1
-    local.get 1
-    call 2
-    call 1
-    i32.const 12
-    i32.const 10
-    i32.store8
-    i32.const 12
-    i32.const 1
-    call 1
-    i32.const 0
-    drop
-    i32.const 0
-    call 2
-    call 1
-    i32.const 12
-    i32.const 10
-    i32.store8
-    i32.const 12
-    i32.const 1
-    call 1
-    i32.const 0
-    drop
-    i32.const 999
     call 2
     call 1
     i32.const 12

@@ -3,13 +3,17 @@ use rty_compiler::codegen::compile_to_wasm;
 
 #[test]
 fn generates_non_empty_wasm() {
-    // program: return 40 + 2
+    // program: result <- 40 + 2
     let program = vec![
-        Stmt::Return(Some(Expr::Binary{
-            left: Box::new(Expr::Number("40".into())),
-            op: BinaryOp::Plus,
-            right: Box::new(Expr::Number("2".into())),
-        }))
+        Stmt::VarAssign {
+            name: "result".to_string(),
+            x_type: None,
+            value: Expr::Binary {
+                left: Box::new(Expr::Number("40".into())),
+                op: BinaryOp::Plus,
+                right: Box::new(Expr::Number("2".into())),
+            }
+        }
     ];
 
     let bytes = compile_to_wasm(program);

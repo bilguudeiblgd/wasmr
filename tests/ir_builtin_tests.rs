@@ -1,5 +1,5 @@
 use rty_compiler::ast::{BinaryOp, Expr, Param, ParamKind, Stmt, Type};
-use rty_compiler::ir::{BuiltinKind, IRExprKind, IRStmt, TypeError, TypeResolver, IR};
+use rty_compiler::ir::{BuiltinKind, IRExprKind, IRProgram, IRStmt, TypeError, TypeResolver, IR};
 use rty_compiler::lexer::{Lexer, Token};
 use rty_compiler::parser::Parser;
 
@@ -17,7 +17,7 @@ fn parse_program(src: &str) -> Vec<Stmt> {
     parser.parse_program().expect("parse_program failed")
 }
 
-fn lower(src: &str) -> Result<Vec<IRStmt>, TypeError> {
+fn lower(src: &str) -> Result<IRProgram, TypeError> {
     let ast = parse_program(src);
     let mut resolver = TypeResolver::new();
     IR::from_ast(ast, &mut resolver)
@@ -26,16 +26,15 @@ fn lower(src: &str) -> Result<Vec<IRStmt>, TypeError> {
 #[test]
 fn lowers_builtin_c_numeric() {
     let ir = lower("a <- c(1, 2, 3)").expect("lower failed");
-    match &ir[0] {
+    match &ir.statements[0] {
         IRStmt::VarAssign { name, value, .. } => {
             assert_eq!(name, "a");
             match &value.kind {
-                IRExprKind::BuiltinCall { builtin, args } => {
-                    assert_eq!(*builtin, BuiltinKind::C);
+                IRExprKind::VectorLiteral(args) => {
                     assert_eq!(args.len(), 3);
                     assert!(args.iter().all(|arg| arg.ty == Type::Int));
                 }
-                other => panic!("expected builtin call, got {:?}", other),
+                other => panic!("expected vector literal, got {:?}", other),
             }
         }
         other => panic!("expected VarAssign, got {:?}", other),
@@ -63,7 +62,7 @@ fn lowers_builtin_list_of_vectors() {
     }];
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(program, &mut resolver).expect("lower failed");
-    match &ir[0] {
+    match &ir.statements[0] {
         IRStmt::VarAssign { value, .. } => match &value.kind {
             IRExprKind::BuiltinCall { builtin, args } => {
                 assert_eq!(*builtin, BuiltinKind::List);
@@ -118,18 +117,17 @@ fn builtin_c_varargs_forwarding() {
     }];
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(program, &mut resolver).expect("lower failed");
-    match &ir[0] {
+    match &ir.statements[0] {
         IRStmt::FunctionDef { body, .. } => {
             assert_eq!(body.len(), 1);
             match &body[0] {
                 IRStmt::Return(expr) => match &expr.kind {
-                    IRExprKind::BuiltinCall { builtin, args } => {
-                        assert_eq!(*builtin, BuiltinKind::C);
+                    IRExprKind::VectorLiteral(args) => {
                         assert_eq!(args.len(), 1);
                         assert_eq!(args[0].ty, Type::VarArgs);
                         assert!(matches!(args[0].kind, IRExprKind::VarArgs));
                     }
-                    other => panic!("expected builtin c call, got {:?}", other),
+                    other => panic!("expected vector literal for c(...) call, got {:?}", other),
                 },
                 other => panic!("expected return, got {:?}", other),
             }
@@ -147,9 +145,9 @@ fn lower_simple_if_without_else() {
     resolver.vars.insert("x".into(), Type::Int);
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.len(), 1);
+    assert_eq!(ir.statements.len(),1);
 
-    match &ir[0] {
+    match &ir.statements[0] {
         IRStmt::If {
             condition,
             then_branch,
@@ -179,9 +177,9 @@ fn lower_if_with_else() {
     resolver.vars.insert("b".into(), Type::Int);
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.len(), 1);
+    assert_eq!(ir.statements.len(),1);
 
-    match &ir[0] {
+    match &ir.statements[0] {
         IRStmt::If {
             condition,
             then_branch,
@@ -221,10 +219,10 @@ fn lower_for_loop_with_range() {
     let mut resolver = TypeResolver::new();
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.len(), 2);
+    assert_eq!(ir.statements.len(),2);
 
     // First statement should be sum initialization
-    match &ir[0] {
+    match &ir.statements[0] {
         IRStmt::VarAssign { name, ty, .. } => {
             assert_eq!(name, "sum");
             assert_eq!(ty, &Type::Int);
@@ -233,7 +231,7 @@ fn lower_for_loop_with_range() {
     }
 
     // Second statement should be the for loop
-    match &ir[1] {
+    match &ir.statements[1] {
         IRStmt::For {
             iter_var: iter_name,
             iter_expr,
@@ -274,10 +272,10 @@ fn lower_for_loop_with_vector() {
     let mut resolver = TypeResolver::new();
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.len(), 2);
+    assert_eq!(ir.statements.len(),2);
 
     // First statement should be vector initialization
-    match &ir[0] {
+    match &ir.statements[0] {
         IRStmt::VarAssign { name, ty, .. } => {
             assert_eq!(name, "my_vec");
             assert_eq!(ty, &Type::Vector(Box::new(Type::Int)));
@@ -286,7 +284,7 @@ fn lower_for_loop_with_vector() {
     }
 
     // Second statement should be the for loop
-    match &ir[1] {
+    match &ir.statements[1] {
         IRStmt::For {
             iter_var: iter_name,
             iter_expr,
@@ -304,21 +302,16 @@ fn lower_for_loop_with_vector() {
                 _ => panic!("expected identifier expression"),
             }
 
-            // Check the loop body contains expression statement with call
+            // Check the loop body contains expression statement with builtin call
             assert_eq!(body.len(), 1);
             match &body[0] {
                 IRStmt::ExprStmt(expr) => {
                     match &expr.kind {
-                        IRExprKind::Call { callee, args } => {
-                            match &callee.kind {
-                                IRExprKind::Identifier(name) => {
-                                    assert_eq!(name, "print");
-                                }
-                                _ => panic!("expected identifier callee"),
-                            }
+                        IRExprKind::BuiltinCall { builtin, args } => {
+                            assert_eq!(*builtin, BuiltinKind::Print);
                             assert_eq!(args.len(), 1);
                         }
-                        _ => panic!("expected call expression"),
+                        _ => panic!("expected builtin call expression"),
                     }
                 }
                 _ => panic!("expected expr stmt in loop body"),
@@ -334,10 +327,10 @@ fn lower_vector_index_read() {
     let mut resolver = TypeResolver::new();
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.len(), 2);
+    assert_eq!(ir.statements.len(),2);
 
     // Second statement should be the index read
-    match &ir[1] {
+    match &ir.statements[1] {
         IRStmt::VarAssign { name, ty, value } => {
             assert_eq!(name, "x");
             assert_eq!(ty, &Type::Int); // Element type should be extracted
@@ -362,10 +355,10 @@ fn lower_vector_index_assign() {
     let mut resolver = TypeResolver::new();
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.len(), 2);
+    assert_eq!(ir.statements.len(),2);
 
     // Second statement should be the index assignment
-    match &ir[1] {
+    match &ir.statements[1] {
         IRStmt::IndexAssign { target, index, value } => {
             assert_eq!(target.ty, Type::Vector(Box::new(Type::Int)));
             assert_eq!(index.ty, Type::Int);
@@ -395,10 +388,10 @@ fn lower_while_loop() {
     let mut resolver = TypeResolver::new();
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.len(), 2);
+    assert_eq!(ir.statements.len(), 2);
 
     // First statement should be x initialization
-    match &ir[0] {
+    match &ir.statements[0] {
         IRStmt::VarAssign { name, ty, .. } => {
             assert_eq!(name, "x");
             assert_eq!(ty, &Type::Int);
@@ -407,7 +400,7 @@ fn lower_while_loop() {
     }
 
     // Second statement should be the while loop
-    match &ir[1] {
+    match &ir.statements[1] {
         IRStmt::While { condition, body } => {
             // Check condition is typed as Bool
             assert_eq!(condition.ty, Type::Bool);

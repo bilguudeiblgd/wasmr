@@ -1,4 +1,5 @@
 use crate::ast::{Param, ParamKind};
+use crate::ir::FunctionMetadata;
 use std::collections::HashMap;
 
 /// Context for tracking locals within a function
@@ -20,6 +21,24 @@ impl LocalContext {
                 varargs_local = Some(i as u32);
             }
         }
+        Self {
+            locals,
+            varargs_local,
+        }
+    }
+
+    /// Create LocalContext from precomputed FunctionMetadata
+    pub(crate) fn from_metadata(metadata: &FunctionMetadata) -> Self {
+        let mut locals = HashMap::new();
+
+        // Add all local variables from metadata
+        for var_info in &metadata.local_vars {
+            locals.insert(var_info.name.clone(), var_info.index);
+        }
+
+        // Extract varargs local if present
+        let varargs_local = metadata.varargs_param.as_ref().map(|v| v.local_index);
+
         Self {
             locals,
             varargs_local,

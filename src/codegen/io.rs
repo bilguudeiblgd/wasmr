@@ -1,9 +1,16 @@
 use crate::ast::Stmt as AstStmt;
-use crate::ir::{IRStmt as Stmt, TypeResolver, IR};
+use crate::ir::{IRProgram, IRStmt as Stmt, IRPassManager, TypeResolver, IR};
 
 use super::WasmGenerator;
 
-pub fn compile_to_wasm_ir(program: Vec<Stmt>) -> Vec<u8> {
+pub fn compile_to_wasm_ir(mut program: IRProgram) -> Vec<u8> {
+    // Run IR passes to populate metadata
+    let mut pass_manager = IRPassManager::default_pipeline();
+    if let Err(e) = pass_manager.run(&mut program) {
+        eprintln!("IR pass error: {}", e);
+        return Vec::new();
+    }
+
     let mut wg = WasmGenerator::new();
     wg.compile_program(program)
 }
@@ -14,7 +21,7 @@ pub fn compile_to_wasm(program: Vec<AstStmt>) -> Vec<u8> {
         Ok(ir) => ir,
         Err(e) => {
             eprintln!("Type error during lowering: {:?}", e);
-            Vec::new()
+            return Vec::new();
         }
     };
     compile_to_wasm_ir(ir_program)
@@ -75,7 +82,7 @@ pub fn write_wat_file<S: AsRef<str>>(
 }
 
 pub fn compile_and_write_ir<S: AsRef<str>>(
-    program: Vec<Stmt>,
+    program: IRProgram,
     filename_stem: S,
 ) -> std::io::Result<std::path::PathBuf> {
     let bytes = compile_to_wasm_ir(program);

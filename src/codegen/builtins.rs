@@ -18,19 +18,27 @@ impl WasmGenerator {
                     return;
                 }
 
-                // Memory layout:
-                // 0-11: buffer for integer-to-string conversion (max 11 chars for i32)
-                // 12: newline character
-                // 16-23: iovec[0] structure (ptr, len) for number
-                // 24-31: iovec[1] structure (ptr, len) for newline
-                // 32-35: nwritten return value
+                // Evaluate the argument (puts value on stack)
+                self.gen_expr(func, ctx, &args[0]);
 
-                const BUFFER_PTR: i32 = 0;
+                // Call int_to_string helper: (num: i32) -> (ptr: i32, len: i32)
+                let int_to_string_idx = self
+                    .func_indices
+                    .get("__int_to_string")
+                    .expect("__int_to_string helper not found");
+                func.instruction(&Instruction::Call(*int_to_string_idx));
+
+                // Stack now has: [ptr, len]
+                // Call print_string helper: (ptr: i32, len: i32) -> void
+                let print_string_idx = self
+                    .func_indices
+                    .get("__print_string")
+                    .expect("__print_string helper not found");
+                func.instruction(&Instruction::Call(*print_string_idx));
+
+                // Print newline
+                // Store newline at a known location (offset 12)
                 const NEWLINE_PTR: i32 = 12;
-                const IOVEC_PTR: i32 = 16;
-                const NWRITTEN_PTR: i32 = 32;
-
-                // Store newline character at position 12
                 func.instruction(&Instruction::I32Const(NEWLINE_PTR));
                 func.instruction(&Instruction::I32Const(10)); // '\n'
                 func.instruction(&Instruction::I32Store8(wasm_encoder::MemArg {
@@ -39,177 +47,10 @@ impl WasmGenerator {
                     memory_index: 0,
                 }));
 
-                // Evaluate the argument (puts integer on stack)
-                self.gen_expr(func, ctx, &args[0]);
-
-                // Convert integer to string and store in memory
-                // We'll use a simple algorithm: repeatedly divide by 10
-                // Get local indices for temporary variables
-                let num_local = ctx.get_local("__print_num").expect("__print_num local not found");
-                let is_negative_local = ctx.get_local("__print_is_negative").expect("__print_is_negative local not found");
-                let write_pos_local = ctx.get_local("__print_write_pos").expect("__print_write_pos local not found");
-                let digit_count_local = ctx.get_local("__print_digit_count").expect("__print_digit_count local not found");
-
-                // num = value from stack
-                func.instruction(&Instruction::LocalSet(num_local));
-
-                // Check if negative
-                func.instruction(&Instruction::LocalGet(num_local));
-                func.instruction(&Instruction::I32Const(0));
-                func.instruction(&Instruction::I32LtS);
-                func.instruction(&Instruction::LocalSet(is_negative_local));
-
-                // If negative, negate the number
-                func.instruction(&Instruction::Block(BlockType::Empty));
-                func.instruction(&Instruction::LocalGet(is_negative_local));
-                func.instruction(&Instruction::I32Eqz);
-                func.instruction(&Instruction::BrIf(0));
-                func.instruction(&Instruction::I32Const(0));
-                func.instruction(&Instruction::LocalGet(num_local));
-                func.instruction(&Instruction::I32Sub);
-                func.instruction(&Instruction::LocalSet(num_local));
-                func.instruction(&Instruction::End);
-
-                // Initialize write_pos to end of buffer (BUFFER_PTR + 11)
-                func.instruction(&Instruction::I32Const(BUFFER_PTR + 11));
-                func.instruction(&Instruction::LocalSet(write_pos_local));
-
-                // Initialize digit_count to 0
-                func.instruction(&Instruction::I32Const(0));
-                func.instruction(&Instruction::LocalSet(digit_count_local));
-
-                // Convert digits (right to left)
-                func.instruction(&Instruction::Block(BlockType::Empty));
-                func.instruction(&Instruction::Loop(BlockType::Empty));
-
-                // write_pos--
-                func.instruction(&Instruction::LocalGet(write_pos_local));
-                func.instruction(&Instruction::I32Const(1));
-                func.instruction(&Instruction::I32Sub);
-                func.instruction(&Instruction::LocalTee(write_pos_local));
-
-                // digit = num % 10
-                func.instruction(&Instruction::LocalGet(num_local));
-                func.instruction(&Instruction::I32Const(10));
-                func.instruction(&Instruction::I32RemS);
-
-                // digit_char = '0' + digit
-                func.instruction(&Instruction::I32Const(48)); // '0'
-                func.instruction(&Instruction::I32Add);
-
-                // memory[write_pos] = digit_char
-                func.instruction(&Instruction::I32Store8(wasm_encoder::MemArg {
-                    offset: 0,
-                    align: 0,
-                    memory_index: 0,
-                }));
-
-                // digit_count++
-                func.instruction(&Instruction::LocalGet(digit_count_local));
-                func.instruction(&Instruction::I32Const(1));
-                func.instruction(&Instruction::I32Add);
-                func.instruction(&Instruction::LocalSet(digit_count_local));
-
-                // num = num / 10
-                func.instruction(&Instruction::LocalGet(num_local));
-                func.instruction(&Instruction::I32Const(10));
-                func.instruction(&Instruction::I32DivS);
-                func.instruction(&Instruction::LocalTee(num_local));
-
-                // Continue loop if num != 0 (br 0 continues the loop)
-                func.instruction(&Instruction::BrIf(0));
-                func.instruction(&Instruction::End); // end loop
-                func.instruction(&Instruction::End); // end block
-
-                // If negative, add '-' sign
-                func.instruction(&Instruction::Block(BlockType::Empty));
-                func.instruction(&Instruction::LocalGet(is_negative_local));
-                func.instruction(&Instruction::I32Eqz);
-                func.instruction(&Instruction::BrIf(0));
-
-                // write_pos--
-                func.instruction(&Instruction::LocalGet(write_pos_local));
-                func.instruction(&Instruction::I32Const(1));
-                func.instruction(&Instruction::I32Sub);
-                func.instruction(&Instruction::LocalTee(write_pos_local));
-
-                // memory[write_pos] = '-'
-                func.instruction(&Instruction::I32Const(45)); // '-'
-                func.instruction(&Instruction::I32Store8(wasm_encoder::MemArg {
-                    offset: 0,
-                    align: 0,
-                    memory_index: 0,
-                }));
-
-                // digit_count++
-                func.instruction(&Instruction::LocalGet(digit_count_local));
-                func.instruction(&Instruction::I32Const(1));
-                func.instruction(&Instruction::I32Add);
-                func.instruction(&Instruction::LocalSet(digit_count_local));
-
-                func.instruction(&Instruction::End);
-
-                // Setup first iovec (number string)
-                // iovec[0].ptr = write_pos
-                func.instruction(&Instruction::I32Const(IOVEC_PTR));
-                func.instruction(&Instruction::LocalGet(write_pos_local));
-                func.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
-                    offset: 0,
-                    align: 2,
-                    memory_index: 0,
-                }));
-
-                // iovec[0].len = digit_count
-                func.instruction(&Instruction::I32Const(IOVEC_PTR + 4));
-                func.instruction(&Instruction::LocalGet(digit_count_local));
-                func.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
-                    offset: 0,
-                    align: 2,
-                    memory_index: 0,
-                }));
-
-                // Call fd_write for the number (1 iovec)
-                func.instruction(&Instruction::I32Const(1)); // stdout
-                func.instruction(&Instruction::I32Const(IOVEC_PTR));
-                func.instruction(&Instruction::I32Const(1)); // 1 iovec (just the number)
-                func.instruction(&Instruction::I32Const(NWRITTEN_PTR));
-
-                if let Some(fd_write_idx) = self.fd_write_idx {
-                    func.instruction(&Instruction::Call(fd_write_idx));
-                    func.instruction(&Instruction::Drop);
-                } else {
-                    func.instruction(&Instruction::I32Const(0));
-                }
-
-                // Setup second iovec (newline)
-                func.instruction(&Instruction::I32Const(IOVEC_PTR));
+                // Call print_string for newline
                 func.instruction(&Instruction::I32Const(NEWLINE_PTR));
-                func.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
-                    offset: 0,
-                    align: 2,
-                    memory_index: 0,
-                }));
-
-                func.instruction(&Instruction::I32Const(IOVEC_PTR + 4));
-                func.instruction(&Instruction::I32Const(1));
-                func.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
-                    offset: 0,
-                    align: 2,
-                    memory_index: 0,
-                }));
-
-                // Call fd_write for the newline (1 iovec)
-                func.instruction(&Instruction::I32Const(1)); // stdout
-                func.instruction(&Instruction::I32Const(IOVEC_PTR));
-                func.instruction(&Instruction::I32Const(1)); // 1 iovec (just the newline)
-                func.instruction(&Instruction::I32Const(NWRITTEN_PTR));
-
-                if let Some(fd_write_idx) = self.fd_write_idx {
-                    func.instruction(&Instruction::Call(fd_write_idx));
-                    func.instruction(&Instruction::Drop);
-                } else {
-                    func.instruction(&Instruction::I32Const(0));
-                }
+                func.instruction(&Instruction::I32Const(1)); // length = 1
+                func.instruction(&Instruction::Call(*print_string_idx));
 
                 // Push a dummy value so ExprStmt can drop it
                 func.instruction(&Instruction::I32Const(0));

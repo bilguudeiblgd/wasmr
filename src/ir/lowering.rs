@@ -1,13 +1,13 @@
 use crate::ast::Type::Vector;
 use crate::ast::{BinaryOp, Expr as AstExpr, Expr, ParamKind, Stmt as AstStmt, Stmt, Type};
-use super::types::{BuiltinKind, IRExpr, IRExprKind, IRStmt, TyResult, TypeError};
+use super::types::{BuiltinKind, IRExpr, IRExprKind, IRProgram, IRStmt, TyResult, TypeError};
 use super::type_resolver::{TypeResolver, FunctionCtx, BuiltinDescriptor};
 
 /// Public IR facade that owns the lowering API. TypeResolver is injected as a dependency.
 pub struct IR;
 
 impl IR {
-    pub fn from_ast(program: Vec<AstStmt>, resolver: &mut TypeResolver) -> TyResult<Vec<IRStmt>> {
+    pub fn from_ast(program: Vec<AstStmt>, resolver: &mut TypeResolver) -> TyResult<IRProgram> {
         let mut lower = LowerCtx { tr: resolver };
         lower.lower_program(program)
     }
@@ -20,7 +20,7 @@ pub(crate) struct LowerCtx<'a> {
 
 impl<'a> LowerCtx<'a> {
     /// Lower a whole program (list of AST statements) to typed IR statements.
-    fn lower_program(&mut self, program: Vec<AstStmt>) -> TyResult<Vec<IRStmt>> {
+    fn lower_program(&mut self, program: Vec<AstStmt>) -> TyResult<IRProgram> {
         // collect function signatures first so calls can be validated
         for s in &program {
             if let AstStmt::VarAssign { name, value, .. } = s {
@@ -40,7 +40,7 @@ impl<'a> LowerCtx<'a> {
         for s in program {
             out.push(self.lower_stmt(s)?);
         }
-        Ok(out)
+        Ok(IRProgram::new(out))
     }
 
     fn lower_block(&mut self, stmts: Vec<AstStmt>) -> TyResult<Vec<IRStmt>> {
@@ -102,6 +102,7 @@ impl<'a> LowerCtx<'a> {
                         params,
                         return_type: ret_ty,
                         body: body_ir,
+                        metadata: None,
                     });
                 }
                 let val = self.lower_expr(value)?;
@@ -631,7 +632,7 @@ fn ensure_ty(mut e: IRExpr, want: Type) -> IRExpr {
 }
 
 /// Convenience function for callers: lower a program without creating a resolver explicitly.
-pub fn lower_program(program: Vec<AstStmt>) -> TyResult<Vec<IRStmt>> {
+pub fn lower_program(program: Vec<AstStmt>) -> TyResult<IRProgram> {
     let mut r = TypeResolver::new();
     IR::from_ast(program, &mut r)
 }
