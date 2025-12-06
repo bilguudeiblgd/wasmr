@@ -328,3 +328,51 @@ fn lower_for_loop_with_vector() {
     }
 }
 
+#[test]
+fn lower_while_loop() {
+    let prog = parse_program("x <- 0\nwhile (x < 10) { x <- x + 1 }");
+    let mut resolver = TypeResolver::new();
+
+    let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
+    assert_eq!(ir.len(), 2);
+
+    // First statement should be x initialization
+    match &ir[0] {
+        IRStmt::VarAssign { name, ty, .. } => {
+            assert_eq!(name, "x");
+            assert_eq!(ty, &Type::Int);
+        }
+        _ => panic!("expected var assign"),
+    }
+
+    // Second statement should be the while loop
+    match &ir[1] {
+        IRStmt::While { condition, body } => {
+            // Check condition is typed as Bool
+            assert_eq!(condition.ty, Type::Bool);
+
+            // Check the condition is a less-than comparison
+            match &condition.kind {
+                IRExprKind::Binary { left, op, right } => {
+                    assert_eq!(*op, BinaryOp::Less);
+                    assert_eq!(left.ty, Type::Int);
+                    assert_eq!(right.ty, Type::Int);
+                }
+                _ => panic!("expected binary comparison expression"),
+            }
+
+            // Check the loop body
+            assert_eq!(body.len(), 1);
+            match &body[0] {
+                IRStmt::VarAssign { name, ty, value } => {
+                    assert_eq!(name, "x");
+                    assert_eq!(ty, &Type::Int);
+                    assert_eq!(value.ty, Type::Int);
+                }
+                _ => panic!("expected var assign in loop body"),
+            }
+        }
+        _ => panic!("expected while statement"),
+    }
+}
+
