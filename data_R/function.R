@@ -1,15 +1,15 @@
 # data/functions.R
 
 # Square and linear combination as simple algorithms
-square <- function(x: int): int {
+square <- function(x) {
   return(x * x)
 }
 
-lincomb <- function(a: int, b: int, x: int, y: int): int {
+lincomb <- function(a, b, x, y) {
   return(a * x + b * y)
 }
 
 # Use the functions
-sq9: int <- square(9)
-lc: int <- lincomb(2, 3, 5, 7)
+sq9 <- square(9)
+lc <- lincomb(2, 3, 5, 7)
 print(sq9)

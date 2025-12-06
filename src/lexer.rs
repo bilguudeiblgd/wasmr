@@ -184,9 +184,15 @@ impl Lexer {
                     }
                     current = new_current; // already points to the first non-ident char
                 }
+                // handle comments and strings
+                '#' => {
+                    self.consume(&chars, &mut current);
+                    let (_, new_current) = self.parse_string(&chars, '\n', current);
+                    current = new_current;
+                }
                 '"' => {
                     self.consume(&chars, &mut current);
-                    let (str, new_current) = self.parse_string(&chars, current);
+                    let (str, new_current) = self.parse_string(&chars, '"', current);
                     tokens.push(Token::XString(str));
                     current = new_current;
                 }
@@ -231,11 +237,11 @@ impl Lexer {
         (ident_str, current)
     }
 
-    fn parse_string(&self, chars: &Vec<char>, start: usize) -> (String, usize) {
+    fn parse_string(&self, chars: &Vec<char>, end_char: char, start: usize) -> (String, usize) {
         let mut str_str = String::new();
         let mut current = start;
         while let Some(ch) = self.peek(chars, current) {
-            if ch != '"' {
+            if ch != end_char {
                 str_str.push(ch);
                 let _ = self.consume(chars, &mut current);
             } else {
