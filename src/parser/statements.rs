@@ -79,6 +79,20 @@ impl Parser {
         Err(ParseError::Expected(Token::Identifier("expression".to_string())))
     }
 
+    pub fn parse_while_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.skip_newlines();
+        self.consume(&Token::LParen)?;
+        self.skip_newlines();
+        let condition = self.parse_expression()?;
+        self.skip_newlines();
+        self.consume(&Token::RParen)?;
+        self.skip_newlines();
+        self.consume(&Token::LBrace)?;
+        self.skip_newlines();
+        let body = self.parse_block_after_lbrace()?;
+        Ok(Stmt::While { condition, body })
+    }
+
     pub fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         // assignment: name <- expr OR name[index] <- expr
         if self.lookahead_is_assignment() {
@@ -122,6 +136,10 @@ impl Parser {
 
         if self.match_token(&Token::For) {
             return self.parse_for_statement()
+        }
+
+        if self.match_token(&Token::While) {
+            return self.parse_while_statement()
         }
 
         // return statement

@@ -115,6 +115,31 @@ impl WasmGenerator {
                 func.instruction(&Instruction::End); // End loop
                 func.instruction(&Instruction::End); // End block
             }
+
+            Stmt::While { condition, body } => {
+                // Block for break
+                func.instruction(&Instruction::Block(BlockType::Empty));
+                // Loop
+                func.instruction(&Instruction::Loop(BlockType::Empty));
+
+                // Evaluate condition
+                self.gen_expr(func, ctx, condition);
+
+                // If condition is false (0), break out of loop (br 1 breaks to outer block)
+                func.instruction(&Instruction::I32Eqz);
+                func.instruction(&Instruction::BrIf(1));
+
+                // Execute loop body
+                for stmt in body {
+                    self.gen_stmt(func, ctx, stmt, ret_has_value);
+                }
+
+                // Continue to next iteration (br 0 continues loop)
+                func.instruction(&Instruction::Br(0));
+
+                func.instruction(&Instruction::End); // End loop
+                func.instruction(&Instruction::End); // End block
+            }
             Stmt::IndexAssign { target, index, value } => {
                 // Generate target (vector ref)
                 self.gen_expr(func, ctx, target);

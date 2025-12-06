@@ -70,6 +70,10 @@ pub enum IRStmt {
         iter_expr: IRExpr,
         body: Vec<IRStmt>,
     },
+    While {
+        condition: IRExpr,
+        body: Vec<IRStmt>,
+    },
     IndexAssign {
         target: IRExpr,
         index: IRExpr,

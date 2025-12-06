@@ -79,6 +79,10 @@ pub enum Stmt {
         iter_vector: Expr,
         body: Vec<Stmt>,
     },
+    While {
+        condition: Expr,
+        body: Vec<Stmt>,
+    },
     IndexAssign {
         target: Expr,
         index: Expr,

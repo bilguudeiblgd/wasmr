@@ -200,6 +200,15 @@ impl<'a> LowerCtx<'a> {
                     context: format!("for loop iterator {}", iter_name),
                 })
             }
+
+            AstStmt::While { condition, body } => {
+                let cond_ir = self.lower_expr(condition)?;
+                let body_ir = self.lower_block(body)?;
+                Ok(IRStmt::While {
+                    condition: cond_ir,
+                    body: body_ir,
+                })
+            }
             AstStmt::IndexAssign { target, index, value } => {
                 let target_ir = self.lower_expr(target)?;
                 let index_ir = self.lower_expr(index)?;
