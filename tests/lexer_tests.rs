@@ -277,3 +277,44 @@ fn lex_if_statement() {
         ]
     );
 }
+
+#[test]
+fn super_assign_token() {
+    // Test <<- (super-assignment) is distinguished from <- and <
+    let tokens = lex_str("count <<- count + 1");
+    let expected = vec![
+        Token::Identifier("count".into()),
+        Token::SuperAssignArrow,
+        Token::Identifier("count".into()),
+        Token::Plus,
+        Token::Number("1".into()),
+        Token::EOF,
+    ];
+    assert_eq!(tokens, expected);
+
+    // Test that <-, <<-, and < all lex correctly in same context
+    let tokens2 = lex_str("x <- 5\ny <<- 10\nif (x < y) { }");
+    let token_without_newlines: Vec<Token> = tokens2
+        .iter()
+        .filter(|t| *t != &Token::Newline)
+        .cloned()
+        .collect();
+    let expected2 = vec![
+        Token::Identifier("x".into()),
+        Token::AssignArrow,
+        Token::Number("5".into()),
+        Token::Identifier("y".into()),
+        Token::SuperAssignArrow,
+        Token::Number("10".into()),
+        Token::If,
+        Token::LParen,
+        Token::Identifier("x".into()),
+        Token::Less,
+        Token::Identifier("y".into()),
+        Token::RParen,
+        Token::LBrace,
+        Token::RBrace,
+        Token::EOF,
+    ];
+    assert_eq!(token_without_newlines, expected2);
+}

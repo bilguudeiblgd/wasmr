@@ -114,6 +114,7 @@ fn parse_assignment_statement() {
             op: BinaryOp::Range,
             right: Box::new(Expr::Number("3".into())),
         },
+        is_super_assign: false,
     };
     assert_eq!(stmt, expected);
 }
@@ -145,7 +146,8 @@ fn parse_block_statement() {
                 Stmt::VarAssign {
                     name: "x".into(),
                     x_type: Some(Type::Int),
-                    value: Expr::Number("1".into())
+                    value: Expr::Number("1".into()),
+                    is_super_assign: false,
                 }
             );
             assert_eq!(
@@ -153,7 +155,8 @@ fn parse_block_statement() {
                 Stmt::VarAssign {
                     name: "y".into(),
                     x_type: Some(Type::Int),
-                    value: Expr::Number("2".into())
+                    value: Expr::Number("2".into()),
+                    is_super_assign: false,
                 }
             );
         }
@@ -170,7 +173,9 @@ fn parse_function_definition_full() {
             name,
             x_type,
             value,
+            is_super_assign,
         } => {
+            assert!(!is_super_assign); // Regular assignment for this test
             assert_eq!(name, "f");
             assert!(x_type.is_none());
             match value {
@@ -213,7 +218,8 @@ fn parse_program_multiple_statements() {
         Stmt::VarAssign {
             name: "a".into(),
             x_type: Some(Type::Int),
-            value: Expr::Number("1".into())
+            value: Expr::Number("1".into()),
+            is_super_assign: false,
         }
     );
     assert_eq!(
@@ -221,7 +227,8 @@ fn parse_program_multiple_statements() {
         Stmt::VarAssign {
             name: "b".into(),
             x_type: Some(Type::Int),
-            value: Expr::Number("2".into())
+            value: Expr::Number("2".into()),
+            is_super_assign: false,
         }
     );
 }
@@ -242,7 +249,8 @@ fn parse_vector() {
                     Expr::Number("2".into()),
                     Expr::Number("3".into())
                 ]
-            }
+            },
+            is_super_assign: false,
         }
     );
 }
@@ -256,7 +264,9 @@ fn parse_variable_arguments() {
             name,
             x_type,
             value,
+            is_super_assign,
         } => {
+            assert!(!is_super_assign); // Regular assignment for this test
             assert_eq!(name, "my_func");
             assert!(x_type.is_none());
             match value {
@@ -302,7 +312,9 @@ fn parse_complex_function_with_vectors() {
             name,
             x_type,
             value,
+            is_super_assign,
         } => {
+            assert!(!is_super_assign); // Regular assignment for this test
             assert_eq!(name, "add_vec");
             assert!(x_type.is_none());
             match value {
@@ -365,14 +377,14 @@ fn parse_if_statement() {
         result"
     );  
     assert_eq!(prog.len(), 4);
-    assert_eq!(prog[0], Stmt::VarAssign { name: "x".into(), x_type: None, value: Expr::Number("15".into()) });
-    assert_eq!(prog[1], Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("0".into()) });
-    assert_eq!(prog[2], Stmt::If { condition: Expr::Binary { left: Box::new(Expr::Identifier("x".into())),op: BinaryOp::Greater, right: Box::new(Expr::Number("20".into())) }, 
-        then_branch: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("1".into()) }], 
+    assert_eq!(prog[0], Stmt::VarAssign { name: "x".into(), x_type: None, value: Expr::Number("15".into()), is_super_assign: false });
+    assert_eq!(prog[1], Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("0".into()), is_super_assign: false });
+    assert_eq!(prog[2], Stmt::If { condition: Expr::Binary { left: Box::new(Expr::Identifier("x".into())),op: BinaryOp::Greater, right: Box::new(Expr::Number("20".into())) },
+        then_branch: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("1".into()), is_super_assign: false }],
         else_branch: Some(
             vec![Stmt::If { condition: Expr::Binary { left: Box::new(Expr::Identifier("x".into())), op: BinaryOp::Equality, right: Box::new(Expr::Number("20".into())) },
-            then_branch: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("2".into()) }],
-            else_branch: Some(vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("3".into()) }])
+            then_branch: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("2".into()), is_super_assign: false }],
+            else_branch: Some(vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("3".into()), is_super_assign: false }])
             }]
         ) });
     assert_eq!(prog[3], Stmt::ExprStmt(Expr::Identifier("result".into())));
@@ -403,7 +415,8 @@ fn parse_simple_if_without_else() {
                 Stmt::VarAssign {
                     name: "y".into(),
                     x_type: None,
-                    value: Expr::Number("10".into())
+                    value: Expr::Number("10".into()),
+                    is_super_assign: false,
                 }
             );
             assert!(else_branch.is_none());
@@ -435,7 +448,8 @@ fn parse_if_with_else() {
                 Stmt::VarAssign {
                     name: "x".into(),
                     x_type: None,
-                    value: Expr::Number("1".into())
+                    value: Expr::Number("1".into()),
+                    is_super_assign: false,
                 }
             );
             assert!(else_branch.is_some());
@@ -446,7 +460,8 @@ fn parse_if_with_else() {
                 Stmt::VarAssign {
                     name: "x".into(),
                     x_type: None,
-                    value: Expr::Number("2".into())
+                    value: Expr::Number("2".into()),
+                    is_super_assign: false,
                 }
             );
         }
@@ -483,7 +498,8 @@ fn parse_for_loop_with_range() {
                         left: Box::new(Expr::Identifier("sum".into())),
                         op: BinaryOp::Plus,
                         right: Box::new(Expr::Identifier("i".into())),
-                    }
+                    },
+                    is_super_assign: false,
                 }
             );
         }
@@ -512,5 +528,50 @@ fn parse_for_loop_with_vector() {
             );
         }
         _ => panic!("expected for statement"),
+    }
+}
+#[test]
+fn parse_super_assignment() {
+    // Test regular assignment with <-
+    let stmt1 = parse_stmt("x <- 5");
+    match stmt1 {
+        Stmt::VarAssign { name, x_type, value, is_super_assign } => {
+            assert_eq!(name, "x");
+            assert!(x_type.is_none());
+            assert_eq!(value, Expr::Number("5".into()));
+            assert!(!is_super_assign);
+        }
+        _ => panic!("expected var assign"),
+    }
+
+    // Test super-assignment with <<-
+    let stmt2 = parse_stmt("count <<- count + 1");
+    match stmt2 {
+        Stmt::VarAssign { name, x_type, value, is_super_assign } => {
+            assert_eq!(name, "count");
+            assert!(x_type.is_none());
+            assert!(is_super_assign);
+            match value {
+                Expr::Binary { left, op, right } => {
+                    assert_eq!(*left, Expr::Identifier("count".into()));
+                    assert_eq!(op, BinaryOp::Plus);
+                    assert_eq!(*right, Expr::Number("1".into()));
+                }
+                _ => panic!("expected binary expression"),
+            }
+        }
+        _ => panic!("expected var assign"),
+    }
+
+    // Test super-assignment with type annotation
+    let stmt3 = parse_stmt("y: int <<- 10");
+    match stmt3 {
+        Stmt::VarAssign { name, x_type, value, is_super_assign } => {
+            assert_eq!(name, "y");
+            assert_eq!(x_type, Some(Type::Int));
+            assert_eq!(value, Expr::Number("10".into()));
+            assert!(is_super_assign);
+        }
+        _ => panic!("expected var assign"),
     }
 }

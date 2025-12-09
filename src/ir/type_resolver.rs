@@ -3,10 +3,10 @@ use crate::ast::Type;
 use super::types::{BuiltinKind, TyResult, TypeError};
 
 pub struct TypeResolver {
-    /// Variable environment
-    pub vars: HashMap<String, Type>,
-    /// Function environment: name -> (param_types, return_type)
-    pub(crate) funcs: HashMap<String, (Vec<crate::ast::Param>, Type)>,
+    /// Unified scope stack for both variables and functions
+    /// Only functions create new scopes - blocks/if/while/for do NOT
+    /// Stack: [global scope, function1 scope, nested_function scope, ...]
+    pub(crate) scope_stack: Vec<HashMap<String, Type>>,
     /// Builtin function metadata
     pub(crate) builtins: HashMap<String, BuiltinDescriptor>,
     /// For better error messages in returns and handling of varargs
@@ -52,8 +52,7 @@ impl TypeResolver {
             }
         );
         Self {
-            vars: HashMap::new(),
-            funcs: HashMap::new(),
+            scope_stack: vec![HashMap::new()],  // Start with one global scope
             builtins,
             current_function: None,
         }
@@ -92,5 +91,60 @@ impl TypeResolver {
             (1, _) | (_, 1) => Float,
             _ => Int,
         })
+    }
+
+    /// Enter a new scope (push empty HashMap onto stack)
+    /// Only called for function definitions
+    pub fn enter_scope(&mut self) {
+        self.scope_stack.push(HashMap::new());
+    }
+
+    /// Exit current scope (pop from stack)
+    /// Only called when exiting function definitions
+    pub fn exit_scope(&mut self) {
+        if self.scope_stack.len() > 1 {
+            self.scope_stack.pop();
+        }
+        // Don't pop the last scope (global scope)
+    }
+
+    /// Look up variable in scope stack (innermost to outermost)
+    /// Searches all function scopes from current outward
+    pub fn lookup_var(&self, name: &str) -> Option<Type> {
+        for scope in self.scope_stack.iter().rev() {
+            if let Some(ty) = scope.get(name) {
+                return Some(ty.clone());
+            }
+        }
+        None
+    }
+
+    /// Define variable in current (innermost) scope
+    /// Variables go into the current function scope
+    pub fn define_var(&mut self, name: String, ty: Type) {
+        if let Some(current_scope) = self.scope_stack.last_mut() {
+            current_scope.insert(name, ty);
+        }
+    }
+
+    /// Assign to variable in parent scopes (for <<-)
+    /// Skips current scope and searches outward
+    pub fn super_assign(&mut self, name: &str, ty: Type) -> Result<(), TypeError> {
+        let len = self.scope_stack.len();
+        if len <= 1 {
+            // At global scope, no parent to assign to
+            return Err(TypeError::UnknownVariable(name.to_string()));
+        }
+
+        // Search from second-to-top scope outward (skip index len-1, which is current)
+        for scope in self.scope_stack[..len-1].iter_mut().rev() {
+            if scope.contains_key(name) {
+                scope.insert(name.to_string(), ty);
+                return Ok(());
+            }
+        }
+
+        // Variable not found in any parent scope
+        Err(TypeError::UnknownVariable(name.to_string()))
     }
 }

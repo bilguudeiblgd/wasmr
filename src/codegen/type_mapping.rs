@@ -10,7 +10,7 @@ impl WasmGenerator {
             Type::Float => ValType::F32,
             Type::Double => ValType::F64,
             // #TODO: Shouldn't be ANYREF
-            Type::List | Type::VarArgs | Type::Any | Type::FunctionRef => {
+            Type::List | Type::VarArgs | Type::Any | Type::Function { .. } => {
                 ValType::Ref(RefType::ANYREF)
             }
             Type::Vector(inner_ty) => {
@@ -42,7 +42,7 @@ impl WasmGenerator {
             Type::Int | Type::Bool | Type::Char | Type::String => StorageType::Val(ValType::I32),
             Type::Float => StorageType::Val(ValType::F32),
             Type::Double => StorageType::Val(ValType::F64),
-            Type::Vector(_) | Type::List | Type::VarArgs | Type::Any | Type::FunctionRef => {
+            Type::Vector(_) | Type::List | Type::VarArgs | Type::Any | Type::Function { .. } => {
                 StorageType::Val(ValType::Ref(RefType::ANYREF))
             }
             _ => StorageType::Val(ValType::I32),

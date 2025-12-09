@@ -227,6 +227,14 @@ impl Parser {
                     body,
                 })
             }
+            Some(Token::True) => {
+                self.advance();
+                Ok(Expr::Logical(true))
+            }
+            Some(Token::False) => {
+                self.advance();
+                Ok(Expr::Logical(false))
+            }
             Some(Token::Number(n)) => {
                 let n = n.clone();
                 self.advance();

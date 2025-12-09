@@ -108,9 +108,16 @@ impl Parser {
                     } else {
                         None
                     };
-                    self.consume(&Token::AssignArrow)?;
+                    // Check for <<- or <-
+                    let is_super_assign = if self.match_token(&Token::SuperAssignArrow) {
+                        true
+                    } else if self.match_token(&Token::AssignArrow) {
+                        false
+                    } else {
+                        return Err(ParseError::Expected(Token::AssignArrow));
+                    };
                     let value = self.parse_expression()?;
-                    return Ok(Stmt::VarAssign { name, x_type, value });
+                    return Ok(Stmt::VarAssign { name, x_type, value, is_super_assign });
                 }
                 Expr::Index { target, index } => {
                     // Index assignment (no type annotation allowed)
@@ -204,12 +211,20 @@ impl Parser {
             _ => None,
         };
 
-        self.consume(&Token::AssignArrow)?;
+        // Check for <<- or <-
+        let is_super_assign = if self.match_token(&Token::SuperAssignArrow) {
+            true
+        } else if self.match_token(&Token::AssignArrow) {
+            false
+        } else {
+            return Err(ParseError::Expected(Token::AssignArrow));
+        };
         let value = self.parse_expression()?;
         Ok(Stmt::VarAssign {
             name,
             x_type,
             value,
+            is_super_assign,
         })
     }
 
@@ -219,6 +234,16 @@ impl Parser {
         let token = self.peek().ok_or(ParseError::Unexpected(Token::EOF))?;
 
         match token {
+            // Handle 'function' keyword as a type (untyped function reference)
+            Token::Function => {
+                self.advance();
+                // For now, just return a generic untyped function
+                // TODO: Parse full function signature: function(int, double): int
+                Ok(Type::Function {
+                    params: vec![],
+                    return_type: Box::new(Type::Any),
+                })
+            }
             Token::Type(type_name) => {
                 let type_name = type_name.clone();
                 self.advance();
@@ -264,8 +289,8 @@ impl Parser {
 
     pub(crate) fn lookahead_is_assignment(&self) -> bool {
         if matches!(self.peek(), Some(Token::Identifier(_))) {
-            // Check: ident <- or ident: type <-
-            if matches!(self.peek_nth(1), Some(Token::AssignArrow) | Some(Token::Colon)) {
+            // Check: ident <- or ident <<- or ident: type <- or ident: type <<-
+            if matches!(self.peek_nth(1), Some(Token::AssignArrow) | Some(Token::SuperAssignArrow) | Some(Token::Colon)) {
                 return true;
             }
             // Check: ident[...] <-
@@ -290,7 +315,7 @@ impl Parser {
             pos += 1;
         }
 
-        // After closing ], check for <-
-        matches!(self.peek_nth(pos), Some(Token::AssignArrow))
+        // After closing ], check for <- or <<-
+        matches!(self.peek_nth(pos), Some(Token::AssignArrow) | Some(Token::SuperAssignArrow))
     }
 }

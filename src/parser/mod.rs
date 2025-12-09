@@ -60,6 +60,7 @@ impl Parser {
             | (Some(Token::Less), Token::Less)
             | (Some(Token::LessEqual), Token::LessEqual)
             | (Some(Token::AssignArrow), Token::AssignArrow)
+            | (Some(Token::SuperAssignArrow), Token::SuperAssignArrow)
             | (Some(Token::Function), Token::Function)
             | (Some(Token::Return), Token::Return)
             | (Some(Token::Identifier(_)), Token::Identifier(_))

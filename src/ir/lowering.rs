@@ -21,20 +21,8 @@ pub(crate) struct LowerCtx<'a> {
 impl<'a> LowerCtx<'a> {
     /// Lower a whole program (list of AST statements) to typed IR statements.
     fn lower_program(&mut self, program: Vec<AstStmt>) -> TyResult<IRProgram> {
-        // collect function signatures first so calls can be validated
-        for s in &program {
-            if let AstStmt::VarAssign { name, value, .. } = s {
-                if let AstExpr::FunctionDef {
-                    params,
-                    return_type,
-                    ..
-                } = value
-                {
-                    let ret_ty = return_type.clone().unwrap_or(Type::Void);
-                    self.tr.funcs.insert(name.clone(), (params.clone(), ret_ty));
-                }
-            }
-        }
+        // Functions are now stored in scope_stack during normal statement processing
+        // No need for separate function registration pass
 
         let mut out = Vec::with_capacity(program.len());
         for s in program {
@@ -61,6 +49,7 @@ impl<'a> LowerCtx<'a> {
                 name,
                 x_type,
                 value,
+                is_super_assign
             } => {
                 // Special-case: function literal on RHS defines a named function
                 if let AstExpr::FunctionDef {
@@ -70,13 +59,32 @@ impl<'a> LowerCtx<'a> {
                 } = value
                 {
                     let ret_ty = return_type.unwrap_or(Type::Void);
-                    // Set up new scope for function variables
-                    let saved_vars = self.tr.vars.clone();
+
+                    // Create function type
+                    let func_ty = Type::Function {
+                        params: params.clone(),
+                        return_type: Box::new(ret_ty.clone()),
+                    };
+
+                    // Store function in current scope (before processing body)
+                    // This enables: 1) recursive calls, 2) nested function access
+                    if is_super_assign {
+                        self.tr.super_assign(&name, func_ty)?;
+                    } else {
+                        self.tr.define_var(name.clone(), func_ty);
+                    }
+
+                    // Enter NEW function scope
+                    self.tr.enter_scope();
+
+                    // Add parameters to new function scope
                     for p in &params {
                         if let ParamKind::Normal(param_ty) = &p.kind {
-                            self.tr.vars.insert(p.name.clone(), param_ty.clone());
+                            self.tr.define_var(p.name.clone(), param_ty.clone());
                         }
                     }
+
+                    // Set function context
                     let saved_fn = self.tr.current_function.clone();
                     let varargs_name = params.iter().find_map(|p| {
                         if matches!(p.kind, ParamKind::VarArgs) {
@@ -91,10 +99,11 @@ impl<'a> LowerCtx<'a> {
                         varargs_name,
                     });
 
+                    // Lower body (can access parent function variables via scope stack)
                     let body_ir = self.lower_block(body)?;
 
-                    // Restore scope
-                    self.tr.vars = saved_vars;
+                    // Exit function scope
+                    self.tr.exit_scope();
                     self.tr.current_function = saved_fn;
 
                     return Ok(IRStmt::FunctionDef {
@@ -123,7 +132,16 @@ impl<'a> LowerCtx<'a> {
                     }
                     None => inferred,
                 };
-                self.tr.vars.insert(name.clone(), final_ty.clone());
+
+                // Regular variable assignment - handle super assignment
+                if is_super_assign {
+                    // Superassignment: find variable in parent function scopes
+                    self.tr.super_assign(&name, final_ty.clone())?;
+                } else {
+                    // Regular assignment: define in current function scope
+                    self.tr.define_var(name.clone(), final_ty.clone());
+                }
+
                 Ok(IRStmt::VarAssign {
                     name,
                     ty: final_ty.clone(),
@@ -184,7 +202,8 @@ impl<'a> LowerCtx<'a> {
                 let iter_expr = self.lower_expr(iter_vector)?;
                 if let Vector(inner_box) = &iter_expr.ty {
                     let inner_ty = (*inner_box).clone();
-                    self.tr.vars.insert(iter_name.clone(), *inner_ty.clone() );
+                    // Loop iterator is function-scoped (visible throughout function)
+                    self.tr.define_var(iter_name.clone(), *inner_ty.clone());
                     return Ok(IRStmt::For {
                         iter_var: (iter_name, *inner_ty),
                         iter_expr,
@@ -267,15 +286,11 @@ impl<'a> LowerCtx<'a> {
                 })
             }
             AstExpr::Identifier(name) => {
-                if let Some(t) = self.tr.vars.get(&name).cloned() {
+                // Unified lookup - works for both variables and functions
+                if let Some(t) = self.tr.lookup_var(&name) {
                     Ok(IRExpr {
                         kind: IRExprKind::Identifier(name),
                         ty: t,
-                    })
-                } else if let Some((_, ret)) = self.tr.funcs.get(&name).cloned() {
-                    Ok(IRExpr {
-                        kind: IRExprKind::Identifier(name),
-                        ty: ret,
                     })
                 } else {
                     Err(TypeError::UnknownVariable(name))
@@ -292,11 +307,17 @@ impl<'a> LowerCtx<'a> {
                 kind: IRExprKind::XString(s),
                 ty: Type::String,
             }),
-            AstExpr::FunctionDef { .. } => Ok(IRExpr {
-                // We currently do not materialize function references at runtime; treat as a value of FunctionRef type.
-                kind: IRExprKind::Unit,
-                ty: Type::FunctionRef,
-            }),
+            AstExpr::FunctionDef { params, return_type, .. } => {
+                // Function definition as expression (shouldn't normally happen, but handle it)
+                let ret_ty = return_type.unwrap_or(Type::Void);
+                Ok(IRExpr {
+                    kind: IRExprKind::Unit,
+                    ty: Type::Function {
+                        params,
+                        return_type: Box::new(ret_ty),
+                    },
+                })
+            }
             AstExpr::Grouping(inner) => self.lower_expr(*inner),
             AstExpr::Binary { left, op, right } => {
                 let l = self.lower_expr(*left)?;
@@ -390,12 +411,21 @@ impl<'a> LowerCtx<'a> {
                         return self.lower_builtin_call(&descriptor, ir_args);
                     }
 
-                    let (params, ret_ty) = self
-                        .tr
-                        .funcs
-                        .get(&name)
-                        .cloned()
+                    // Look up function type from scope
+                    let func_type = self.tr.lookup_var(&name)
                         .ok_or_else(|| TypeError::UnknownFunction(name.clone()))?;
+
+                    // Extract params and return type from Function type
+                    let (params, ret_ty) = match func_type {
+                        Type::Function { params, return_type } => (params, *return_type),
+                        other => {
+                            return Err(TypeError::TypeMismatch {
+                                expected: Type::Void,  // placeholder
+                                found: other,
+                                context: format!("{} is not a function", name),
+                            });
+                        }
+                    };
 
                     if params.iter().any(|p| matches!(p.kind, ParamKind::VarArgs)) {
                         return Err(TypeError::UnsupportedOperation {
@@ -483,7 +513,8 @@ impl<'a> LowerCtx<'a> {
                         context: "only vectors can be indexed".to_string(),
                     }),
                 }
-            }
+            },
+            Expr::Logical(_) => todo!()
         }
     }
 

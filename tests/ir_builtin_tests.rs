@@ -59,6 +59,7 @@ fn lowers_builtin_list_of_vectors() {
                 },
             ],
         },
+        is_super_assign: false,
     }];
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(program, &mut resolver).expect("lower failed");
@@ -84,6 +85,7 @@ fn builtin_list_rejects_mixed_types() {
             callee: Box::new(Expr::Identifier("list".into())),
             args: vec![Expr::Number("1".into()), Expr::XString("two".into())],
         },
+        is_super_assign: false,
     }];
     let mut resolver = TypeResolver::new();
     let err = IR::from_ast(program, &mut resolver).expect_err("expected type error");
@@ -114,6 +116,7 @@ fn builtin_c_varargs_forwarding() {
                 args: vec![Expr::VarArgs],
             }))],
         },
+        is_super_assign: false,
     }];
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(program, &mut resolver).expect("lower failed");
@@ -142,7 +145,7 @@ fn lower_simple_if_without_else() {
     let prog = parse_program("if (x > 5) { y <- 10 }");
     let mut resolver = TypeResolver::new();
     // Need to declare x first since it's used in condition
-    resolver.vars.insert("x".into(), Type::Int);
+    resolver.define_var("x".into(), Type::Int);
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
     assert_eq!(ir.statements.len(),1);
@@ -173,8 +176,8 @@ fn lower_if_with_else() {
     let prog = parse_program("if (a == b) { x <- 1 } else { x <- 2 }");
     let mut resolver = TypeResolver::new();
     // Declare a and b as integers
-    resolver.vars.insert("a".into(), Type::Int);
-    resolver.vars.insert("b".into(), Type::Int);
+    resolver.define_var("a".into(), Type::Int);
+    resolver.define_var("b".into(), Type::Int);
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
     assert_eq!(ir.statements.len(),1);

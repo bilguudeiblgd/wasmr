@@ -50,6 +50,17 @@ impl Lexer {
 
             // Two-character tokens and '<' handling
             if c == '<' {
+                // Check for <<- FIRST (three characters)
+                if self.peek_n(&chars, current, 1) == Some('<')
+                   && self.peek_n(&chars, current, 2) == Some('-') {
+                    tokens.push(Token::SuperAssignArrow);
+                    // consume all three: '<', '<', '-'
+                    self.consume(&chars, &mut current);
+                    self.consume(&chars, &mut current);
+                    self.consume(&chars, &mut current);
+                    continue;
+                }
+                // Then check for <-
                 if let Some('-') = self.peek_n(&chars, current, 1) {
                     tokens.push(Token::AssignArrow);
                     // consume both '<' and '-'
@@ -173,6 +184,9 @@ impl Lexer {
                         "function" => tokens.push(Token::Function),
                         "return" => tokens.push(Token::Return),
                         "in" => tokens.push(Token::In),
+                        "TRUE" => tokens.push(Token::True),
+                        "FALSE" => tokens.push(Token::False),
+
                         // Treat built-in type names specially
                         _ => {
                             if is_builtin_type_name(&identifier_name) {
@@ -278,7 +292,8 @@ pub enum Token {
     Dot,
 
     // Multi-char tokens
-    AssignArrow, // <-
+    AssignArrow,      // <-
+    SuperAssignArrow, // <<-
 
     // Literals and identifiers
     Identifier(String),

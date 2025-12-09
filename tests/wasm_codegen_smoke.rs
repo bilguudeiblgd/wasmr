@@ -12,7 +12,8 @@ fn generates_non_empty_wasm() {
                 left: Box::new(Expr::Number("40".into())),
                 op: BinaryOp::Plus,
                 right: Box::new(Expr::Number("2".into())),
-            }
+            },
+            is_super_assign: false
         }
     ];
 

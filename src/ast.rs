@@ -22,6 +22,7 @@ pub enum Expr {
     XString(String),
     /// Represents the `...` placeholder inside function bodies.
     VarArgs,
+    Logical(bool),
     // Anonymous function literal that evaluates to a reference to that function.
     // In practice this is typically used on the right-hand side of an assignment,
     // e.g., `f <- function(x: int): int { return(x) }`.
@@ -67,6 +68,7 @@ pub enum Stmt {
         name: String,
         x_type: Option<Type>,
         value: Expr,
+        is_super_assign: bool, // true for <<-, false for <-
     },
     If {
         condition: Expr,
@@ -104,8 +106,12 @@ pub enum Type {
     Void,
     Bool,
     Any,
+    Reference(Box<Type>),
     /// Internal type used to represent packed `...` values.
     VarArgs,
-    // Represents a reference/value of a function.
-    FunctionRef,
+    /// Function type with signature: parameters and return type
+    Function {
+        params: Vec<Param>,
+        return_type: Box<Type>,
+    },
 }
