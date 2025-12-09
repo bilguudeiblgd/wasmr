@@ -16,6 +16,14 @@ use local_context::LocalContext;
 use crate::ir::{IRProgram, IRStmt as Stmt};
 use std::collections::HashMap;
 use wasm_encoder::{CodeSection, DataSection, ExportKind, ExportSection, Function, FunctionSection, ImportSection, Instruction, MemorySection, Module, TypeSection, ValType};
+
+// Function signature for tracking unique function types
+#[derive(Hash, Eq, PartialEq, Clone, Debug)]
+struct FunctionSignature {
+    param_types: Vec<Type>,
+    return_type: Type,
+}
+
 pub struct WasmGenerator {
     module: Module,
     pub(crate) types: TypeSection,
@@ -32,6 +40,8 @@ pub struct WasmGenerator {
     array_type_f32: Option<u32>,
     array_type_f64: Option<u32>,
     array_type_anyref: Option<u32>,
+    // Map function signatures to type indices for typed funcrefs
+    func_type_indices: HashMap<FunctionSignature, u32>,
 }
 
 impl WasmGenerator {
@@ -52,6 +62,7 @@ impl WasmGenerator {
             array_type_f32: None,
             array_type_f64: None,
             array_type_anyref: None,
+            func_type_indices: HashMap::new(),
         }
     }
 
@@ -200,6 +211,41 @@ impl WasmGenerator {
         self.module.section(&self.exports);
         self.module.section(&self.code);
         self.module.clone().finish()
+    }
+
+    /// Get or create a function type index for typed function references
+    /// This enables reusing the same type index for functions with the same signature
+    pub(crate) fn get_or_create_func_type_index(
+        &mut self,
+        param_types: &[Type],
+        return_type: &Type,
+    ) -> u32 {
+        let sig = FunctionSignature {
+            param_types: param_types.to_vec(),
+            return_type: return_type.clone(),
+        };
+
+        if let Some(&idx) = self.func_type_indices.get(&sig) {
+            return idx;
+        }
+
+        // Create new type
+        let param_vals: Vec<ValType> = param_types
+            .iter()
+            .map(|t| self.wasm_valtype(t))
+            .collect();
+
+        let result_vals = if *return_type == Type::Void {
+            vec![]
+        } else {
+            vec![self.wasm_valtype(return_type)]
+        };
+
+        let type_idx = self.types.len() as u32;
+        self.types.ty().function(param_vals, result_vals);
+        self.func_type_indices.insert(sig, type_idx);
+
+        type_idx
     }
 
     /// Simple variable collector for top-level statements (without metadata)

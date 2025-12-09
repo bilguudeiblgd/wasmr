@@ -318,3 +318,30 @@ fn super_assign_token() {
     ];
     assert_eq!(token_without_newlines, expected2);
 }
+
+#[test]
+fn arrow_token() {
+    // Test -> token for function types
+    let code = "float -> float";
+    let tokens = lex_str(code);
+    let expected = vec![
+        Token::Type("float".into()),
+        Token::Arrow,
+        Token::Type("float".into()),
+        Token::EOF,
+    ];
+    assert_eq!(tokens, expected);
+
+    // Test that -> and - are distinguished
+    let code2 = "x - y -> z";
+    let tokens2 = lex_str(code2);
+    let expected2 = vec![
+        Token::Identifier("x".into()),
+        Token::Minus,
+        Token::Identifier("y".into()),
+        Token::Arrow,
+        Token::Identifier("z".into()),
+        Token::EOF,
+    ];
+    assert_eq!(tokens2, expected2);
+}

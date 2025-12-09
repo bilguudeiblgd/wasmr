@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Stmt, Type};
+use crate::ast::{Expr, Param, ParamKind, Stmt, Type};
 use crate::lexer::Token;
 
 use super::{ParseError, Parser};
@@ -231,9 +231,78 @@ impl Parser {
     // removed parse_function_def: function definitions are now expressions parsed in parse_primary
 
     pub(crate) fn parse_x_type(&mut self) -> Result<Type, ParseError> {
+        // Try parsing as function type with arrow syntax
+        // This handles: float -> float, float, float -> int, (float -> float) -> int
+        // allow_comma = true at top level (for multi-param function types)
+        self.parse_function_type(true)
+    }
+
+    // Parse a type without allowing comma-separated types (for function parameters)
+    pub(crate) fn parse_param_type(&mut self) -> Result<Type, ParseError> {
+        // Don't allow comma at top level (comma is for separating parameters)
+        self.parse_function_type(false)
+    }
+
+    // Parse function types with arrow syntax: float -> float, (float -> float) -> int
+    // allow_comma: whether to parse comma-separated types (only true at top level)
+    fn parse_function_type(&mut self, allow_comma: bool) -> Result<Type, ParseError> {
+        let mut param_types = Vec::new();
+
+        // Parse first parameter (or single type if not a function)
+        loop {
+            let ty = self.parse_primary_type()?;
+            param_types.push(ty);
+
+            // Check for comma (more parameters) - only if allowed
+            if allow_comma && self.match_token(&Token::Comma) {
+                continue;
+            }
+
+            break;
+        }
+
+        // Check for arrow
+        if self.match_token(&Token::Arrow) {
+            // Parse return type (could be another function type)
+            // Don't allow comma in return type (unless parenthesized)
+            let return_type = self.parse_function_type(false)?;
+
+            // Convert param types to Param structs (anonymous in type signatures)
+            let params = param_types
+                .into_iter()
+                .map(|ty| Param {
+                    name: String::new(),
+                    kind: ParamKind::Normal(ty),
+                })
+                .collect();
+
+            Ok(Type::Function {
+                params,
+                return_type: Box::new(return_type),
+            })
+        } else {
+            // Not a function type, just return the single type
+            if param_types.len() == 1 {
+                Ok(param_types.into_iter().next().unwrap())
+            } else {
+                Err(ParseError::Expected(Token::Arrow))
+            }
+        }
+    }
+
+    // Parse a primary (non-arrow) type: int, float, vector<int>, (float -> float)
+    fn parse_primary_type(&mut self) -> Result<Type, ParseError> {
         let token = self.peek().ok_or(ParseError::Unexpected(Token::EOF))?;
 
         match token {
+            // Handle parenthesized function types: (float -> float)
+            Token::LParen => {
+                self.advance();
+                // Inside parentheses, allow comma again (for multi-param functions)
+                let ty = self.parse_function_type(true)?;
+                self.consume(&Token::RParen)?;
+                Ok(ty)
+            }
             // Handle 'function' keyword as a type (untyped function reference)
             Token::Function => {
                 self.advance();
@@ -250,8 +319,8 @@ impl Parser {
 
                 // Check for generic type syntax like vector<int>
                 if self.match_token(&Token::Less) {
-                    // Parse the inner type
-                    let inner_type = self.parse_x_type()?;
+                    // Parse the inner type (no comma allowed in generic parameters)
+                    let inner_type = self.parse_function_type(false)?;
 
                     // Expect closing '>'
                     self.consume(&Token::Greater)?;

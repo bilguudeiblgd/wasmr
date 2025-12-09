@@ -9,8 +9,28 @@ impl WasmGenerator {
             Type::Int | Type::Bool | Type::Char => ValType::I32,
             Type::Float => ValType::F32,
             Type::Double => ValType::F64,
+            // For function types, create a typed funcref
+            Type::Function { params, return_type } => {
+                // Extract parameter types from Param structs
+                let param_types: Vec<Type> = params
+                    .iter()
+                    .filter_map(|p| match &p.kind {
+                        ParamKind::Normal(ty) => Some(ty.clone()),
+                        ParamKind::VarArgs => None, // Skip varargs for now
+                    })
+                    .collect();
+
+                // Get or create the function type index
+                let type_idx = self.get_or_create_func_type_index(&param_types, return_type);
+
+                // Return a typed funcref
+                ValType::Ref(RefType {
+                    nullable: false,
+                    heap_type: HeapType::Concrete(type_idx),
+                })
+            }
             // #TODO: Shouldn't be ANYREF
-            Type::List | Type::VarArgs | Type::Any | Type::Function { .. } => {
+            Type::List | Type::VarArgs | Type::Any => {
                 ValType::Ref(RefType::ANYREF)
             }
             Type::Vector(inner_ty) => {

@@ -1,7 +1,39 @@
 use crate::ast::Type::Vector;
-use crate::ast::{BinaryOp, Expr as AstExpr, Expr, ParamKind, Stmt as AstStmt, Stmt, Type};
+use crate::ast::{BinaryOp, Expr as AstExpr, Expr, Param, ParamKind, Stmt as AstStmt, Stmt, Type};
 use super::types::{BuiltinKind, IRExpr, IRExprKind, IRProgram, IRStmt, TyResult, TypeError};
 use super::type_resolver::{TypeResolver, FunctionCtx, BuiltinDescriptor};
+
+/// Compare two types for compatibility, ignoring parameter names in function types
+fn types_compatible(t1: &Type, t2: &Type) -> bool {
+    match (t1, t2) {
+        (Type::Function { params: p1, return_type: r1 }, Type::Function { params: p2, return_type: r2 }) => {
+            // Check same number of parameters
+            if p1.len() != p2.len() {
+                return false;
+            }
+            // Check parameter types match (ignoring names)
+            for (param1, param2) in p1.iter().zip(p2.iter()) {
+                if !param_kinds_compatible(&param1.kind, &param2.kind) {
+                    return false;
+                }
+            }
+            // Check return types match
+            types_compatible(r1, r2)
+        }
+        (Type::Vector(inner1), Type::Vector(inner2)) => types_compatible(inner1, inner2),
+        (Type::Reference(inner1), Type::Reference(inner2)) => types_compatible(inner1, inner2),
+        _ => t1 == t2, // For non-function types, use regular equality
+    }
+}
+
+/// Compare parameter kinds for compatibility (recursive for nested function types)
+fn param_kinds_compatible(k1: &ParamKind, k2: &ParamKind) -> bool {
+    match (k1, k2) {
+        (ParamKind::Normal(ty1), ParamKind::Normal(ty2)) => types_compatible(ty1, ty2),
+        (ParamKind::VarArgs, ParamKind::VarArgs) => true,
+        _ => false,
+    }
+}
 
 /// Public IR facade that owns the lowering API. TypeResolver is injected as a dependency.
 pub struct IR;
@@ -120,7 +152,7 @@ impl<'a> LowerCtx<'a> {
                     Some(t) => {
                         // allow simple numeric promotions into declared type
                         let promoted = self.tr.promote_numeric(&inferred, &t);
-                        if promoted == t {
+                        if types_compatible(&promoted, &t) {
                             t
                         } else {
                             return Err(TypeError::TypeMismatch {
@@ -416,12 +448,12 @@ impl<'a> LowerCtx<'a> {
                         .ok_or_else(|| TypeError::UnknownFunction(name.clone()))?;
 
                     // Extract params and return type from Function type
-                    let (params, ret_ty) = match func_type {
-                        Type::Function { params, return_type } => (params, *return_type),
+                    let (params, ret_ty) = match &func_type {
+                        Type::Function { params, return_type } => (params.clone(), (**return_type).clone()),
                         other => {
                             return Err(TypeError::TypeMismatch {
                                 expected: Type::Void,  // placeholder
-                                found: other,
+                                found: other.clone(),
                                 context: format!("{} is not a function", name),
                             });
                         }
@@ -453,7 +485,7 @@ impl<'a> LowerCtx<'a> {
                             ParamKind::VarArgs => unreachable!("variadic params already rejected"),
                         };
                         let a_ir2 = ensure_ty(a_ir, expected_ty.clone());
-                        if a_ir2.ty != expected_ty {
+                        if !types_compatible(&a_ir2.ty, &expected_ty) {
                             return Err(TypeError::TypeMismatch {
                                 expected: expected_ty,
                                 found: a_ir2.ty,
@@ -467,7 +499,7 @@ impl<'a> LowerCtx<'a> {
                         kind: IRExprKind::Call {
                             callee: Box::new(IRExpr {
                                 kind: IRExprKind::Identifier(name),
-                                ty: ret_ty.clone(),
+                                ty: func_type.clone(),  // Callee should have Function type
                             }),
                             args: ir_args,
                         },

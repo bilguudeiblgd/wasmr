@@ -57,7 +57,7 @@ for plain_r_file in data_R/*.R; do
     fi
 
     # Run WASM and capture output
-    wasm_output=$(wasmtime -W gc=y "$wasm_file" 2>&1)
+    wasm_output=$(wasmtime -W gc=y -W function-references "$wasm_file" 2>&1)
     wasm_exit=$?
 
     # Skip if WASM failed to run

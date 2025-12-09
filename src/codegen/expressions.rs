@@ -15,7 +15,12 @@ impl WasmGenerator {
                 self.gen_binary_op(func, ctx, op, left, right)
             }
             IRExprKind::Identifier(name) => {
-                if let Some(idx) = ctx.get_local(name) {
+                // Check if this is a function name being used as a value
+                if let Some(&func_idx) = self.func_indices.get(name) {
+                    // This is a function used as a value - emit ref.func
+                    func.instruction(&Instruction::RefFunc(func_idx));
+                } else if let Some(idx) = ctx.get_local(name) {
+                    // Regular local variable
                     func.instruction(&Instruction::LocalGet(idx));
                 } else {
                     // Unknown variable, push 0 as fallback
@@ -86,45 +91,74 @@ impl WasmGenerator {
         callee: &IRExpr,
         args: &[IRExpr],
     ) {
-        // Generate arguments first (they need to be on the stack in order)
-        for arg in args {
-            self.gen_expr(func, ctx, arg);
-        }
-
         // Determine what kind of call this is
         match &callee.kind {
             IRExprKind::Identifier(name) => {
-                // Direct function call by name
-                if let Some(&func_idx) = self.func_indices.get(name) {
+                // Check if this is a direct function call or a function variable
+                if self.func_indices.contains_key(name) && !ctx.has_local(name) {
+                    // Direct function call by name
+                    // Generate arguments first
+                    for arg in args {
+                        self.gen_expr(func, ctx, arg);
+                    }
+                    let func_idx = self.func_indices[name];
                     func.instruction(&Instruction::Call(func_idx));
                 } else {
-                    // Unknown function - this should have been caught by type checking
-                    eprintln!("Warning: Call to unknown function '{}'", name);
-                    // Drop all arguments from stack
-                    for _ in args {
-                        func.instruction(&Instruction::Drop);
+                    // Function stored in a variable - indirect call via call_ref
+                    // Generate arguments first
+                    for arg in args {
+                        self.gen_expr(func, ctx, arg);
                     }
-                    // Push a default value (0) as a placeholder
-                    func.instruction(&Instruction::I32Const(0));
+
+                    // Generate the callee (function reference)
+                    self.gen_expr(func, ctx, callee);
+
+                    // Get the function type index for call_ref
+                    if let Type::Function { params, return_type } = &callee.ty {
+                        let param_types: Vec<Type> = params
+                            .iter()
+                            .filter_map(|p| match &p.kind {
+                                crate::ast::ParamKind::Normal(ty) => Some(ty.clone()),
+                                crate::ast::ParamKind::VarArgs => None,
+                            })
+                            .collect();
+                        let type_idx = self.get_or_create_func_type_index(&param_types, return_type);
+                        func.instruction(&Instruction::CallRef(type_idx));
+                    } else {
+                        eprintln!("Warning: Callee is not a function type");
+                        // Drop arguments and callee
+                        for _ in args {
+                            func.instruction(&Instruction::Drop);
+                        }
+                        func.instruction(&Instruction::Drop);
+                        func.instruction(&Instruction::I32Const(0));
+                    }
                 }
             }
             _ => {
-                // Indirect call (function stored in variable or returned from expression)
-                // This would require function tables (call_indirect)
-                // For now, we'll just emit a warning and provide a fallback
-                eprintln!("Warning: Indirect function calls not yet fully implemented");
-
-                // Drop all arguments
-                for _ in args {
-                    func.instruction(&Instruction::Drop);
+                // Indirect call (function returned from expression or complex expression)
+                // Generate arguments first
+                for arg in args {
+                    self.gen_expr(func, ctx, arg);
                 }
 
-                // Try to evaluate the callee expression
+                // Generate the callee expression (function reference)
                 self.gen_expr(func, ctx, callee);
-                func.instruction(&Instruction::Drop);
 
-                // Push default value
-                func.instruction(&Instruction::I32Const(0));
+                // Get the function type index for call_ref
+                if let Type::Function { params, return_type } = &callee.ty {
+                    let param_types: Vec<Type> = params
+                        .iter()
+                        .filter_map(|p| match &p.kind {
+                            crate::ast::ParamKind::Normal(ty) => Some(ty.clone()),
+                            crate::ast::ParamKind::VarArgs => None,
+                        })
+                        .collect();
+                    let type_idx = self.get_or_create_func_type_index(&param_types, return_type);
+                    func.instruction(&Instruction::CallRef(type_idx));
+                } else {
+                    panic!("Warning: Callee is not a function type");
+                }
             }
         }
     }

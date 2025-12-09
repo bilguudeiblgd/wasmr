@@ -87,8 +87,15 @@ impl Lexer {
                     self.consume(&chars, &mut current);
                 }
                 '-' => {
-                    tokens.push(Token::Minus);
-                    self.consume(&chars, &mut current);
+                    // Check for -> before treating as Minus
+                    if self.peek_n(&chars, current, 1) == Some('>') {
+                        tokens.push(Token::Arrow);
+                        self.consume(&chars, &mut current); // consume '-'
+                        self.consume(&chars, &mut current); // consume '>'
+                    } else {
+                        tokens.push(Token::Minus);
+                        self.consume(&chars, &mut current);
+                    }
                 }
                 '*' => {
                     tokens.push(Token::Mul);
@@ -294,6 +301,7 @@ pub enum Token {
     // Multi-char tokens
     AssignArrow,      // <-
     SuperAssignArrow, // <<-
+    Arrow,            // ->
 
     // Literals and identifiers
     Identifier(String),

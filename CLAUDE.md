@@ -98,13 +98,20 @@ The language supports:
 ### Language Features
 
 - R-style assignment: `x <- value` or with type: `x: int <- value`
+- Superassignment: `x <<- value` for modifying parent scope variables
 - Function definitions as expressions: `f <- function(x: int): int { return(x * 2) }`
+- **First-class functions**: Functions as values with arrow type syntax
+  - Arrow types: `int -> int`, `float, float -> int`, `(int -> int) -> int`
+  - Pass functions as arguments, return from functions, store in variables
+  - Uses WASM typed function references (`ref.func` and `call_ref`)
+  - Parentheses required for multi-param types in parameters: `f: (int, int -> int)`
 - Varargs support: `function(...) { }` with `...` forwarding
-- Control flow: `if/else`, `for (x in vec) { }`
+- Control flow: `if/else`, `for (x in vec) { }`, `while (cond) { }`
 - Binary operations: arithmetic, comparison, logical (& and |)
 - Range operator: `1:10` creates a sequence
 - Built-in functions: `c()` (concatenate), `list()`, `print()`
 - Vector operations (componentwise arithmetic)
+- Lexical scoping: Only functions create scopes (not blocks/if/while/for)
 
 ## Important Implementation Details
 
@@ -125,11 +132,35 @@ Built-in type names are recognized in `src/lib.rs`:
 - `ensure_array_type()` manages array type indices (cached per element type)
 - Function types are created dynamically and registered in `TypeSection`
 - Local variables tracked by index in `LocalContext`
+- **Function references**: Uses typed funcrefs (WASM function references proposal)
+  - `get_or_create_func_type_index()` creates/reuses type indices for function signatures
+  - Functions represented as `ref (type $idx)` at runtime (not table indices)
+  - Direct calls use `call`, indirect calls use `call_ref`
+  - No element section or function tables needed
+
+### Type Comparison for Functions
+When comparing function types (e.g., in type checking), parameter names are ignored:
+- `types_compatible()` in `src/ir/lowering.rs` compares types structurally
+- Function types match based on parameter types and return type only
+- Example: `int -> int` annotation matches function with parameter named `x: int`
+- This is critical for first-class function type checking
+
+### IR Passes and Metadata
+The IR system uses a pass-based architecture:
+- `IRPassManager` in `src/ir/passes/mod.rs` coordinates passes
+- **Variable collection pass**: Analyzes functions to collect all local variables
+  - Assigns WASM local indices to parameters, user variables, and compiler temps
+  - Populates `FunctionMetadata` with `LocalVarInfo` for each variable
+  - Tracks loop iterators, loop indices, and temporary variables
+- **Scoping**: Lexical scoping where only functions create new scopes
+  - `ScopeStack` in `TypeResolver` manages nested function scopes
+  - Superassignment (`<<-`) searches parent function scopes
 
 ### Testing Strategy
-- Lexer tests: Token stream validation (`tests/lexer_tests.rs`)
+- Lexer tests: Token stream validation (`tests/lexer_tests.rs`, `tests/parser_function_type_tests.rs`)
 - Parser tests: AST structure validation (`tests/parser_tests.rs`)
-- IR tests: Type resolution correctness (`tests/ir_builtin_tests.rs`)
+- IR tests: Type resolution and scoping (`tests/ir_builtin_tests.rs`, `tests/ir_scoping_tests.rs`)
+- First-class functions: Type checking and codegen (`tests/first_class_function_tests.rs`)
 - WASM tests: Code generation and execution (`tests/wasm_codegen_smoke.rs`, `tests/wasm_write_out.rs`)
 
 ## Common Development Patterns

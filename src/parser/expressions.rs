@@ -198,7 +198,7 @@ impl Parser {
 
                             // require ':' type
                             let x_type = if self.match_token(&Token::Colon) {
-                                self.parse_x_type()?
+                                self.parse_param_type()?
                             } else {
                                 return Err(ParseError::Expected(Token::Colon));
                             };

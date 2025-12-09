@@ -49,6 +49,10 @@ impl LocalContext {
         self.locals.get(name).copied()
     }
 
+    pub(crate) fn has_local(&self, name: &str) -> bool {
+        self.locals.contains_key(name)
+    }
+
     pub(crate) fn add_local(&mut self, name: String, index: u32) {
         self.locals.insert(name, index);
     }
