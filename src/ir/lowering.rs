@@ -306,9 +306,9 @@ impl<'a> LowerCtx<'a> {
     fn lower_expr(&mut self, expr: AstExpr) -> TyResult<IRExpr> {
         match expr {
             AstExpr::Number(s) => {
-                // Heuristic: integers have no dot; otherwise Double
+                // Heuristic: integers have no dot; otherwise Float
                 let ty = if s.contains('.') {
-                    Type::Double
+                    Type::Float
                 } else {
                     Type::Int
                 };
@@ -435,6 +435,7 @@ impl<'a> LowerCtx<'a> {
             }
             AstExpr::Call { callee, args } => match *callee {
                 AstExpr::Identifier(name) => {
+                    // Direct function call: name(args)
                     if let Some(descriptor) = self.tr.builtins.get(&name).cloned() {
                         let mut ir_args = Vec::with_capacity(args.len());
                         for arg in args {
@@ -501,6 +502,73 @@ impl<'a> LowerCtx<'a> {
                                 kind: IRExprKind::Identifier(name),
                                 ty: func_type.clone(),  // Callee should have Function type
                             }),
+                            args: ir_args,
+                        },
+                        ty: ret_ty,
+                    })
+                }
+                AstExpr::Call { callee: inner_callee, args: inner_args } => {
+                    // Recursive case: callee is itself a call expression
+                    // e.g., outer(1.0)(2.0) where outer(1.0) returns a function
+                    // Here: inner_callee = Identifier("outer"), inner_args = [1.0]
+                    //       outer args = [2.0]
+                    // We need to first evaluate Call{inner_callee(inner_args)}, then call result with outer args
+
+                    let inner_call = AstExpr::Call {
+                        callee: inner_callee,
+                        args: inner_args,
+                    };
+                    let callee_ir = self.lower_expr(inner_call)?;
+
+                    // The callee must evaluate to a function type
+                    let (params, ret_ty) = match &callee_ir.ty {
+                        Type::Function { params, return_type } => (params.clone(), (**return_type).clone()),
+                        other => {
+                            return Err(TypeError::TypeMismatch {
+                                expected: Type::Void, // placeholder
+                                found: other.clone(),
+                                context: "callee must be a function type".to_string(),
+                            });
+                        }
+                    };
+
+                    if params.iter().any(|p| matches!(p.kind, ParamKind::VarArgs)) {
+                        return Err(TypeError::UnsupportedOperation {
+                            op: "calling function expression with varargs".to_string(),
+                            left: Type::VarArgs,
+                            right: Type::VarArgs,
+                        });
+                    }
+
+                    if params.len() != args.len() {
+                        return Err(TypeError::ArityMismatch {
+                            func: "<expression>".to_string(),
+                            expected: params.len(),
+                            found: args.len(),
+                        });
+                    }
+
+                    let mut ir_args = Vec::with_capacity(args.len());
+                    for (i, (arg_ast, param)) in args.into_iter().zip(params.into_iter()).enumerate() {
+                        let a_ir = self.lower_expr(arg_ast)?;
+                        let expected_ty = match param.kind {
+                            ParamKind::Normal(ty) => ty,
+                            ParamKind::VarArgs => unreachable!("variadic params already rejected"),
+                        };
+                        let a_ir2 = ensure_ty(a_ir, expected_ty.clone());
+                        if !types_compatible(&a_ir2.ty, &expected_ty) {
+                            return Err(TypeError::TypeMismatch {
+                                expected: expected_ty,
+                                found: a_ir2.ty,
+                                context: format!("argument {} for call expression", i),
+                            });
+                        }
+                        ir_args.push(a_ir2);
+                    }
+
+                    Ok(IRExpr {
+                        kind: IRExprKind::Call {
+                            callee: Box::new(callee_ir),
                             args: ir_args,
                         },
                         ty: ret_ty,
