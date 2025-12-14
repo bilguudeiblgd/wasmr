@@ -134,8 +134,6 @@
     i32.const 12
     i32.const 1
     call 1
-    i32.const 0
-    drop
   )
   (func (;5;) (type 6)
     call 4

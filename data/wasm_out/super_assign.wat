@@ -6,8 +6,11 @@
   (type (;4;) (func (param (ref 3) (ref 3)) (result (ref 3))))
   (type (;5;) (func))
   (type (;6;) (func))
-  (type (;7;) (func))
-  (type (;8;) (func))
+  (type (;7;) (struct (field (mut i32))))
+  (type (;8;) (struct (field i32) (field (ref 7))))
+  (type (;9;) (func (param (ref 8))))
+  (type (;10;) (func))
+  (type (;11;) (func))
   (import "wasi_snapshot_preview1" "fd_write" (func (;0;) (type 0)))
   (memory (;0;) 1)
   (export "f" (func 5))
@@ -129,12 +132,16 @@
     local.get 5
   )
   (func (;4;) (type 5)
-    (local i32 i32)
+    (local (ref 7) i32)
     i32.const 10
+    struct.new 7
     local.set 0
-    call 5
-    drop
+    i32.const 0
     local.get 0
+    struct.new 8
+    call 5
+    local.get 0
+    struct.get 7 0
     call 2
     call 1
     i32.const 12
@@ -143,12 +150,9 @@
     i32.const 12
     i32.const 1
     call 1
-    i32.const 0
-    drop
     i32.const 10
     local.set 1
     call 6
-    drop
     local.get 1
     call 2
     call 1
@@ -158,20 +162,19 @@
     i32.const 12
     i32.const 1
     call 1
-    i32.const 0
-    drop
   )
-  (func (;5;) (type 6)
+  (func (;5;) (type 9) (param (ref 8))
+    local.get 0
+    struct.get 8 1
+    i32.const 15
+    struct.set 7 0
+  )
+  (func (;6;) (type 10)
     (local i32)
     i32.const 15
     local.set 0
   )
-  (func (;6;) (type 7)
-    (local i32)
-    i32.const 15
-    local.set 0
-  )
-  (func (;7;) (type 8)
+  (func (;7;) (type 11)
     call 4
   )
 )

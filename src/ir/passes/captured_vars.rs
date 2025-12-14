@@ -201,8 +201,10 @@ impl CapturedVarsPass {
     fn collect_local_declarations(&self, stmts: &[IRStmt], locals: &mut HashSet<String>) {
         for stmt in stmts {
             match stmt {
-                IRStmt::VarAssign { name, .. } => {
-                    locals.insert(name.clone());
+                IRStmt::VarAssign { name, is_super_assign, .. } => {
+                    if *is_super_assign == false {
+                        locals.insert(name.clone());
+                    }
                 }
                 IRStmt::FunctionDef { name, .. } => {
                     locals.insert(name.clone());

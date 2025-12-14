@@ -14,16 +14,88 @@ impl WasmGenerator {
         match stmt {
             Stmt::ExprStmt(e) => {
                 self.gen_expr(func, ctx, e);
-                func.instruction(&Instruction::Drop);
+                // Only drop if the expression returns a value (not void)
+                if !matches!(e.ty, crate::ast::Type::Void) {
+                    func.instruction(&Instruction::Drop);
+                }
             }
             Stmt::VarAssign {
-                name, ty: _, value, is_super_assign: _,
+                name, ty, value, is_super_assign,
             } => {
-                self.gen_expr(func, ctx, value);
-                // value.ty when does type checking work?
-                if let Some(idx) = ctx.get_local(name) {
-                    func.instruction(&Instruction::LocalSet(idx));
+                // Check if it's a captured variable from parent scope
+                if let Some(captured) = ctx.get_captured(name) {
+                    if *is_super_assign {
+                        // Super-assignment to captured variable
+                        let env_param_idx = ctx.env_param_index().expect("Function with captured vars should have env param");
+                        let env_struct_type_idx = ctx.env_struct_type_idx().expect("Function with captured vars should have env struct type");
+
+                        if captured.is_mutable {
+                            // The captured variable is a ref cell
+                            // 1. Load env and extract ref cell
+                            func.instruction(&Instruction::LocalGet(env_param_idx));
+                            func.instruction(&Instruction::StructGet {
+                                struct_type_index: env_struct_type_idx,
+                                field_index: captured.field_index,
+                            });
+
+                            // 2. Generate value
+                            self.gen_expr(func, ctx, value);
+
+                            // 3. Set the ref cell's field
+                            let ref_cell_type_idx = self.get_or_create_ref_cell_type(ty);
+                            func.instruction(&Instruction::StructSet {
+                                struct_type_index: ref_cell_type_idx,
+                                field_index: 0,
+                            });
+                        } else {
+                            // Direct field in environment struct (not wrapped in ref cell)
+                            // 1. Load env
+                            func.instruction(&Instruction::LocalGet(env_param_idx));
+
+                            // 2. Generate value
+                            self.gen_expr(func, ctx, value);
+
+                            // 3. Set the field
+                            func.instruction(&Instruction::StructSet {
+                                struct_type_index: env_struct_type_idx,
+                                field_index: captured.field_index,
+                            });
+                        }
+                    } else {
+                        // Initial assignment to captured variable - this shouldn't happen
+                        // (captured vars are already defined in parent scope)
+                        eprintln!("Warning: initial assignment to captured variable {} - this shouldn't happen", name);
+                        self.gen_expr(func, ctx, value);
+                        func.instruction(&Instruction::Drop);
+                    }
+                } else if let Some(idx) = ctx.get_local(name) {
+                    if ctx.needs_ref_cell(name) {
+                        // Variable is in a reference cell
+                        if *is_super_assign {
+                            // Super-assignment: update existing ref cell
+                            // Load ref cell, push new value, update field 0
+                            func.instruction(&Instruction::LocalGet(idx));
+                            self.gen_expr(func, ctx, value);
+                            let ref_cell_type_idx = self.get_or_create_ref_cell_type(ty);
+                            func.instruction(&Instruction::StructSet {
+                                struct_type_index: ref_cell_type_idx,
+                                field_index: 0,
+                            });
+                        } else {
+                            // Initial assignment: create new ref cell
+                            self.gen_expr(func, ctx, value);
+                            let ref_cell_type_idx = self.get_or_create_ref_cell_type(ty);
+                            func.instruction(&Instruction::StructNew(ref_cell_type_idx));
+                            func.instruction(&Instruction::LocalSet(idx));
+                        }
+                    } else {
+                        // Regular variable
+                        self.gen_expr(func, ctx, value);
+                        func.instruction(&Instruction::LocalSet(idx));
+                    }
                 } else {
+                    // Variable not found - drop the value
+                    self.gen_expr(func, ctx, value);
                     func.instruction(&Instruction::Drop);
                 }
             }

@@ -85,8 +85,19 @@ impl WasmGenerator {
                     // This is a function used as a value - emit ref.func
                     func.instruction(&Instruction::RefFunc(func_idx));
                 } else if let Some(idx) = ctx.get_local(name) {
-                    // Regular local variable
-                    func.instruction(&Instruction::LocalGet(idx));
+                    // Local variable - might be in a reference cell
+                    if ctx.needs_ref_cell(name) {
+                        // Variable is in a reference cell - load the ref cell and extract the value
+                        let ref_cell_type_idx = self.get_or_create_ref_cell_type(&expr.ty);
+                        func.instruction(&Instruction::LocalGet(idx));
+                        func.instruction(&Instruction::StructGet {
+                            struct_type_index: ref_cell_type_idx,
+                            field_index: 0,
+                        });
+                    } else {
+                        // Regular local variable
+                        func.instruction(&Instruction::LocalGet(idx));
+                    }
                 } else {
                     // Unknown variable, push 0 as fallback
                     func.instruction(&Instruction::I32Const(0));

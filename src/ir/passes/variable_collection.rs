@@ -96,7 +96,13 @@ impl VariableCollectionPass {
         seen: &mut HashSet<String>,
     ) {
         match stmt {
-            IRStmt::VarAssign { name, ty, value: _, is_super_assign: _ } => {
+            IRStmt::VarAssign { name, ty, value: _, is_super_assign } => {
+                // Skip super assignments, they are handled separately in the CapturedVarsPass
+                if *is_super_assign {
+                    *next_index += 1;
+                    return
+                }
+
                 // Add user variable if not seen
                 if !seen.contains(name) {
                     vars.push(LocalVarInfo {

@@ -45,10 +45,18 @@ impl WasmGenerator {
 
         // Field 1..N: captured variables
         for captured in captured_vars {
-            let val_type = self.wasm_valtype(&captured.ty);
+            // If the captured variable is mutable (via super-assignment),
+            // it's stored as a ref cell in the caller's scope.
+            // We need to pass the ref cell itself (not extract its value).
+            let val_type = if captured.is_mutable {
+                let ref_cell_type_idx = self.get_or_create_ref_cell_type(&captured.ty);
+                self.ref_cell_valtype(ref_cell_type_idx)
+            } else {
+                self.wasm_valtype(&captured.ty)
+            };
             fields.push(FieldType {
                 element_type: StorageType::Val(val_type),
-                mutable: captured.is_mutable,
+                mutable: false,  // The ref cell itself is immutable; the value inside is mutable
             });
         }
 

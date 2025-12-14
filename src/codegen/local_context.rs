@@ -8,12 +8,14 @@ pub(crate) struct LocalContext {
     locals: HashMap<String, u32>,
     /// Local index for the packed varargs parameter, if present.
     varargs_local: Option<u32>,
-    /// Captured variables (for closures) - maps name to field index in environment struct
+    /// Captured variables - maps name to field index in environment struct
     captured_vars: HashMap<String, CapturedVarInfo>,
-    /// Local index of the environment parameter (always 0 for closures)
+    /// Local index of the environment parameter (always 0 for functions with captured vars)
     env_param_index: Option<u32>,
-    /// Environment struct type index (for closures)
+    /// Environment struct type index
     env_struct_type_idx: Option<u32>,
+    /// Variables that need reference cells (for super-assignment)
+    ref_cell_vars: HashMap<String, ()>,
 }
 
 impl LocalContext {
@@ -33,6 +35,7 @@ impl LocalContext {
             captured_vars: HashMap::new(),
             env_param_index: None,
             env_struct_type_idx: None,
+            ref_cell_vars: HashMap::new(),
         }
     }
 
@@ -67,12 +70,21 @@ impl LocalContext {
             captured_vars.insert(captured.name.clone(), captured.clone());
         }
 
+        // Build ref cell vars map
+        let mut ref_cell_vars = HashMap::new();
+        for var_info in &metadata.local_vars {
+            if var_info.need_reference {
+                ref_cell_vars.insert(var_info.name.clone(), ());
+            }
+        }
+
         Self {
             locals,
             varargs_local,
             captured_vars,
             env_param_index,
             env_struct_type_idx,
+            ref_cell_vars,
         }
     }
 
@@ -105,5 +117,10 @@ impl LocalContext {
     /// Get environment struct type index
     pub(crate) fn env_struct_type_idx(&self) -> Option<u32> {
         self.env_struct_type_idx
+    }
+
+    /// Check if a variable needs a reference cell (for super-assignment)
+    pub(crate) fn needs_ref_cell(&self, name: &str) -> bool {
+        self.ref_cell_vars.contains_key(name)
     }
 }

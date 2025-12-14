@@ -6,6 +6,7 @@ mod expressions;
 mod builtins;
 mod statements;
 mod function_env;
+mod ref_cell;
 pub mod io;
 pub mod codegen_builtins;
 
@@ -47,6 +48,8 @@ pub struct WasmGenerator {
     env_struct_types: HashMap<String, u32>,
     // Map function name to metadata (for accessing captured variables in gen_call)
     func_metadata: HashMap<String, Box<FunctionMetadata>>,
+    // Map type to reference cell struct type index (for super-assignment)
+    ref_cell_types: HashMap<Type, u32>,
 }
 
 impl WasmGenerator {
@@ -70,6 +73,7 @@ impl WasmGenerator {
             func_type_indices: HashMap::new(),
             env_struct_types: HashMap::new(),
             func_metadata: HashMap::new(),
+            ref_cell_types: HashMap::new(),
         }
     }
 
@@ -142,7 +146,6 @@ impl WasmGenerator {
                         })
                         .collect();
                     let bare_func_type_idx = self.get_or_create_func_type_index(&bare_param_types, return_type);
-
                     // Create environment struct type
                     let _env_type_idx = self.get_or_create_env_struct_type(
                         name,
@@ -180,11 +183,16 @@ impl WasmGenerator {
         let local_types: Vec<(u32, ValType)> = non_param_vars
             .iter()
             .map(|var_info| {
-                // Check if this variable holds a function with environment struct
-                let val_type = if let Some(&env_type_idx) = self.env_struct_types.get(&var_info.name) {
+                // Determine the WASM type for this local variable
+                let val_type = if var_info.need_reference {
+                    // Variable needs to be in a reference cell (for super-assignment)
+                    let ref_cell_type_idx = self.get_or_create_ref_cell_type(&var_info.ty);
+                    self.ref_cell_valtype(ref_cell_type_idx)
+                } else if let Some(&env_type_idx) = self.env_struct_types.get(&var_info.name) {
                     // This variable holds a function with environment - use the environment struct type
                     self.env_struct_valtype(env_type_idx)
                 } else {
+                    // Regular variable
                     self.wasm_valtype(&var_info.ty)
                 };
                 (1, val_type)
@@ -225,7 +233,12 @@ impl WasmGenerator {
                 let local_types: Vec<(u32, ValType)> = non_param_vars
                     .iter()
                     .map(|var_info| {
-                        let val_type = if let Some(&env_type_idx) = self.env_struct_types.get(&var_info.name) {
+                        // Determine the WASM type for this local variable
+                        let val_type = if var_info.need_reference {
+                            // Variable needs to be in a reference cell (for super-assignment)
+                            let ref_cell_type_idx = self.get_or_create_ref_cell_type(&var_info.ty);
+                            self.ref_cell_valtype(ref_cell_type_idx)
+                        } else if let Some(&env_type_idx) = self.env_struct_types.get(&var_info.name) {
                             self.env_struct_valtype(env_type_idx)
                         } else {
                             self.wasm_valtype(&var_info.ty)

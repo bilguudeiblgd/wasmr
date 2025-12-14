@@ -52,8 +52,7 @@ impl WasmGenerator {
                 func.instruction(&Instruction::I32Const(1)); // length = 1
                 func.instruction(&Instruction::Call(*print_string_idx));
 
-                // Push a dummy value so ExprStmt can drop it
-                func.instruction(&Instruction::I32Const(0));
+                // print() is void - no return value needed
             }
             BuiltinKind::C | BuiltinKind::List => {
                 // These are handled by creating vector literals

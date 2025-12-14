@@ -174,8 +174,6 @@
     i32.const 12
     i32.const 1
     call 1
-    i32.const 0
-    drop
     local.get 0
     return
   )

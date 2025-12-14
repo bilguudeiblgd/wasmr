@@ -137,8 +137,6 @@
     i32.const 12
     i32.const 1
     call 1
-    i32.const 0
-    drop
     i32.const 7
     local.set 1
     local.get 1
@@ -151,8 +149,6 @@
     i32.const 1
     call 1
     i32.const 0
-    drop
-    i32.const 0
     call 2
     call 1
     i32.const 12
@@ -161,8 +157,6 @@
     i32.const 12
     i32.const 1
     call 1
-    i32.const 0
-    drop
     i32.const 999
     call 2
     call 1
@@ -172,8 +166,6 @@
     i32.const 12
     i32.const 1
     call 1
-    i32.const 0
-    drop
   )
   (func (;5;) (type 6)
     call 4
