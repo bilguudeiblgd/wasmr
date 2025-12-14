@@ -17,7 +17,7 @@ impl WasmGenerator {
                 func.instruction(&Instruction::Drop);
             }
             Stmt::VarAssign {
-                name, ty: _, value, ..
+                name, ty: _, value, is_super_assign: _,
             } => {
                 self.gen_expr(func, ctx, value);
                 // value.ty when does type checking work?

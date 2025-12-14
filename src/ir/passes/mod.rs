@@ -8,6 +8,8 @@ use super::TypeError;
 
 pub mod manager;
 pub mod variable_collection;
+pub mod captured_vars;
+pub mod function_flattening;
 
 // Re-export for convenience
 pub use manager::IRPassManager;

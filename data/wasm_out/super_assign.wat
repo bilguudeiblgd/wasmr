@@ -7,12 +7,14 @@
   (type (;5;) (func))
   (type (;6;) (func))
   (type (;7;) (func))
+  (type (;8;) (func))
   (import "wasi_snapshot_preview1" "fd_write" (func (;0;) (type 0)))
   (memory (;0;) 1)
+  (export "f" (func 5))
+  (export "g" (func 6))
   (export "memory" (memory 0))
-  (export "f" (func 4))
-  (export "g" (func 5))
-  (export "_start" (func 6))
+  (export "main" (func 4))
+  (export "_start" (func 7))
   (func (;1;) (type 1) (param i32 i32)
     i32.const 1024
     local.get 0
@@ -127,20 +129,10 @@
     local.get 5
   )
   (func (;4;) (type 5)
-    (local i32)
-    i32.const 15
-    local.set 0
-  )
-  (func (;5;) (type 6)
-    (local i32)
-    i32.const 15
-    local.set 0
-  )
-  (func (;6;) (type 7)
     (local i32 i32)
     i32.const 10
     local.set 0
-    call 4
+    call 5
     drop
     local.get 0
     call 2
@@ -155,7 +147,7 @@
     drop
     i32.const 10
     local.set 1
-    call 5
+    call 6
     drop
     local.get 1
     call 2
@@ -168,5 +160,18 @@
     call 1
     i32.const 0
     drop
+  )
+  (func (;5;) (type 6)
+    (local i32)
+    i32.const 15
+    local.set 0
+  )
+  (func (;6;) (type 7)
+    (local i32)
+    i32.const 15
+    local.set 0
+  )
+  (func (;7;) (type 8)
+    call 4
   )
 )

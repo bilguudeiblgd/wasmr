@@ -9,7 +9,7 @@ pub mod passes;
 pub use types::{
     BuiltinKind, IRExpr, IRExprKind, IRStmt, TypeError, TyResult,
     // New types for pass-based architecture
-    IRProgram, FunctionMetadata, LocalVarInfo, VarOrigin, VarArgsInfo,
+    IRProgram, FunctionMetadata, LocalVarInfo, VarOrigin, VarArgsInfo, CapturedVarInfo,
 };
 pub use type_resolver::TypeResolver;
 pub use lowering::{lower_program, IR};

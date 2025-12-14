@@ -1,6 +1,8 @@
 /// Pass Manager for orchestrating IR passes
 
 use super::{Pass, PassError};
+use crate::ir::passes::captured_vars::CapturedVarsPass;
+use crate::ir::passes::function_flattening::FunctionFlatteningPass;
 use crate::ir::passes::variable_collection::VariableCollectionPass;
 use crate::ir::types::IRProgram;
 
@@ -35,14 +37,16 @@ impl IRPassManager {
     /// Create a default pass pipeline with standard passes
     ///
     /// The default pipeline includes:
-    /// 1. Variable collection - collects all variables and assigns local indices
-    /// 2. (Future) Constant folding, dead code elimination, etc.
+    /// 1. Variable collection (first pass) - assigns local indices to all variables
+    /// 2. Captured variables analysis - detects variables captured from parent scopes
+    /// 3. Function flattening - extracts nested functions to top-level
+    /// 4. Variable collection (second pass) - re-run after flattening creates new variables
     pub fn default_pipeline() -> Self {
         let mut manager = Self::new();
         manager.add_pass(VariableCollectionPass::new());
-        // Future passes can be added here:
-        // manager.add_pass(ConstantFoldingPass::new());
-        // manager.add_pass(DeadCodeEliminationPass::new());
+        manager.add_pass(CapturedVarsPass::new());
+        manager.add_pass(FunctionFlatteningPass::new());
+        manager.add_pass(VariableCollectionPass::new());  // Run again after flattening
         manager
     }
 }

@@ -3,7 +3,7 @@
 /// Collects all variables in functions and assigns WASM local indices.
 /// This includes parameters, user-declared variables, and compiler-generated temporaries.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::{Param, ParamKind, Type};
 use crate::ir::{
@@ -25,7 +25,7 @@ impl VariableCollectionPass {
     fn collect_function_vars(
         &self,
         params: &[Param],
-        body: &[IRStmt],
+        body: &mut [IRStmt],
     ) -> FunctionMetadata {
         let mut local_vars = Vec::new();
         let mut varargs_param = None;
@@ -48,6 +48,7 @@ impl VariableCollectionPass {
                 name: param.name.clone(),
                 ty,
                 index: idx as u32,
+                need_reference: false,
                 origin,
             });
         }
@@ -68,13 +69,15 @@ impl VariableCollectionPass {
             local_vars: local_vars.clone(),
             varargs_param,
             local_count: local_vars.len() as u32,
+            captured_vars: vec![],
+            is_closure: false,
         }
     }
 
     /// Recursively collect variables from statements
     fn collect_vars_from_stmts(
         &self,
-        stmts: &[IRStmt],
+        stmts: &mut [IRStmt],
         vars: &mut Vec<LocalVarInfo>,
         next_index: &mut u32,
         seen: &mut HashSet<String>,
@@ -87,19 +90,20 @@ impl VariableCollectionPass {
     /// Collect variables from a single statement
     fn collect_vars_from_stmt(
         &self,
-        stmt: &IRStmt,
+        stmt: &mut IRStmt,
         vars: &mut Vec<LocalVarInfo>,
         next_index: &mut u32,
         seen: &mut HashSet<String>,
     ) {
         match stmt {
-            IRStmt::VarAssign { name, ty, value: _ } => {
+            IRStmt::VarAssign { name, ty, value: _, is_super_assign: _ } => {
                 // Add user variable if not seen
                 if !seen.contains(name) {
                     vars.push(LocalVarInfo {
                         name: name.clone(),
                         ty: ty.clone(),
                         index: *next_index,
+                        need_reference: false,
                         origin: VarOrigin::UserDeclared,
                     });
                     seen.insert(name.clone());
@@ -120,6 +124,7 @@ impl VariableCollectionPass {
                         name: iter_name.clone(),
                         ty: iter_ty.clone(),
                         index: *next_index,
+                        need_reference: false,
                         origin: VarOrigin::LoopIterator,
                     });
                     seen.insert(iter_name.clone());
@@ -133,6 +138,7 @@ impl VariableCollectionPass {
                         name: system_iter_name.clone(),
                         ty: Type::Int,
                         index: *next_index,
+                        need_reference: false,
                         origin: VarOrigin::LoopIndex,
                     });
                     seen.insert(system_iter_name);
@@ -146,6 +152,7 @@ impl VariableCollectionPass {
                         name: vec_name.clone(),
                         ty: Type::Vector(Box::new(iter_ty.clone())),
                         index: *next_index,
+                        need_reference: false,
                         origin: VarOrigin::LoopVector,
                     });
                     seen.insert(vec_name);
@@ -159,6 +166,7 @@ impl VariableCollectionPass {
                         name: len_name.clone(),
                         ty: Type::Int,
                         index: *next_index,
+                        need_reference: false,
                         origin: VarOrigin::LoopLength,
                     });
                     seen.insert(len_name);
@@ -200,8 +208,10 @@ impl VariableCollectionPass {
                 // No special handling needed
             }
 
-            IRStmt::FunctionDef { .. } => {
-                // Nested functions not supported, skip
+            IRStmt::FunctionDef { params, body, metadata, .. } => {
+                // Recursively collect variables for nested function
+                let func_metadata = self.collect_function_vars(params, body);
+                *metadata = Some(Box::new(func_metadata));
             }
 
             IRStmt::While { condition: _, body } => {
@@ -219,17 +229,15 @@ impl Pass for VariableCollectionPass {
 
     fn run(&mut self, program: &mut IRProgram) -> Result<(), PassError> {
         // Iterate through all statements and collect variables for each function
-        for stmt in &mut program.statements {
-            if let IRStmt::FunctionDef {
-                params,
-                body,
-                metadata,
-                ..
-            } = stmt
-            {
-                let func_metadata = self.collect_function_vars(params, body);
-                *metadata = Some(Box::new(func_metadata));
-            }
+        if let IRStmt::FunctionDef {
+            params,
+            body,
+            metadata,
+            ..
+        } = &mut program.main_function
+        {
+            let func_metadata = self.collect_function_vars(&params, body);
+            metadata.replace(Box::new(func_metadata));
         }
 
         Ok(())

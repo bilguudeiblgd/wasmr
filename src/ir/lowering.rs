@@ -178,6 +178,7 @@ impl<'a> LowerCtx<'a> {
                     name,
                     ty: final_ty.clone(),
                     value: ensure_ty(val, final_ty),
+                    is_super_assign,
                 })
             }
             AstStmt::Return(opt) => {

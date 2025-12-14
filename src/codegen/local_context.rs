@@ -1,5 +1,5 @@
 use crate::ast::{Param, ParamKind};
-use crate::ir::FunctionMetadata;
+use crate::ir::{CapturedVarInfo, FunctionMetadata};
 use std::collections::HashMap;
 
 /// Context for tracking locals within a function
@@ -8,6 +8,12 @@ pub(crate) struct LocalContext {
     locals: HashMap<String, u32>,
     /// Local index for the packed varargs parameter, if present.
     varargs_local: Option<u32>,
+    /// Captured variables (for closures) - maps name to field index in environment struct
+    captured_vars: HashMap<String, CapturedVarInfo>,
+    /// Local index of the environment parameter (always 0 for closures)
+    env_param_index: Option<u32>,
+    /// Environment struct type index (for closures)
+    env_struct_type_idx: Option<u32>,
 }
 
 impl LocalContext {
@@ -24,24 +30,49 @@ impl LocalContext {
         Self {
             locals,
             varargs_local,
+            captured_vars: HashMap::new(),
+            env_param_index: None,
+            env_struct_type_idx: None,
         }
     }
 
     /// Create LocalContext from precomputed FunctionMetadata
+    /// If is_closure is true, assumes environment is at local index 0
     pub(crate) fn from_metadata(metadata: &FunctionMetadata) -> Self {
+        Self::from_metadata_with_env(metadata, None, None)
+    }
+
+    /// Create LocalContext from precomputed FunctionMetadata with closure environment
+    pub(crate) fn from_metadata_with_env(
+        metadata: &FunctionMetadata,
+        env_param_index: Option<u32>,
+        env_struct_type_idx: Option<u32>
+    ) -> Self {
         let mut locals = HashMap::new();
 
-        // Add all local variables from metadata
+        // If there's an environment parameter, all other locals shift by 1
+        let index_offset = if env_param_index.is_some() { 1 } else { 0 };
+
+        // Add all local variables from metadata with adjusted indices
         for var_info in &metadata.local_vars {
-            locals.insert(var_info.name.clone(), var_info.index);
+            locals.insert(var_info.name.clone(), var_info.index + index_offset);
         }
 
-        // Extract varargs local if present
-        let varargs_local = metadata.varargs_param.as_ref().map(|v| v.local_index);
+        // Extract varargs local if present (also needs offset adjustment)
+        let varargs_local = metadata.varargs_param.as_ref().map(|v| v.local_index + index_offset);
+
+        // Build captured vars map
+        let mut captured_vars = HashMap::new();
+        for captured in &metadata.captured_vars {
+            captured_vars.insert(captured.name.clone(), captured.clone());
+        }
 
         Self {
             locals,
             varargs_local,
+            captured_vars,
+            env_param_index,
+            env_struct_type_idx,
         }
     }
 
@@ -59,5 +90,20 @@ impl LocalContext {
 
     pub(crate) fn varargs_local(&self) -> Option<u32> {
         self.varargs_local
+    }
+
+    /// Get captured variable info
+    pub(crate) fn get_captured(&self, name: &str) -> Option<&CapturedVarInfo> {
+        self.captured_vars.get(name)
+    }
+
+    /// Get environment parameter index
+    pub(crate) fn env_param_index(&self) -> Option<u32> {
+        self.env_param_index
+    }
+
+    /// Get environment struct type index
+    pub(crate) fn env_struct_type_idx(&self) -> Option<u32> {
+        self.env_struct_type_idx
     }
 }

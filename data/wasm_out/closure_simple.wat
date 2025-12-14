@@ -5,13 +5,15 @@
   (type (;3;) (array (mut i32)))
   (type (;4;) (func (param (ref 3) (ref 3)) (result (ref 3))))
   (type (;5;) (func))
-  (type (;6;) (func (param i32 i32) (result i32)))
-  (type (;7;) (func (param i32 i32) (result i32)))
-  (type (;8;) (func))
+  (type (;6;) (func (param f64) (result f64)))
+  (type (;7;) (struct (field i32) (field f64)))
+  (type (;8;) (func (param (ref 7) f64) (result f64)))
+  (type (;9;) (func (param f64) (result (ref 6))))
+  (type (;10;) (func))
   (import "wasi_snapshot_preview1" "fd_write" (func (;0;) (type 0)))
   (memory (;0;) 1)
-  (export "boolean_or" (func 5))
-  (export "boolean_and" (func 6))
+  (export "inner" (func 5))
+  (export "make_adder" (func 6))
   (export "memory" (memory 0))
   (export "main" (func 4))
   (export "_start" (func 7))
@@ -128,20 +130,39 @@
     end
     local.get 5
   )
-  (func (;4;) (type 5))
-  (func (;5;) (type 6) (param i32 i32) (result i32)
+  (func (;4;) (type 5)
+    (local (ref 6) i32)
+    i32.const 0
+    call 6
+    local.set 0
+    i32.const 0
     local.get 0
+    call_ref 6
+    local.set 1
     local.get 1
-    i32.or
+    call 2
+    call 1
+    i32.const 12
+    i32.const 10
+    i32.store8
+    i32.const 12
+    i32.const 1
+    call 1
+    i32.const 0
+    drop
+  )
+  (func (;5;) (type 8) (param (ref 7) f64) (result f64)
+    local.get 0
+    struct.get 7 1
+    local.get 1
+    f64.add
     return
   )
-  (func (;6;) (type 7) (param i32 i32) (result i32)
-    local.get 0
-    local.get 1
-    i32.and
+  (func (;6;) (type 9) (param f64) (result (ref 6))
+    ref.func 5
     return
   )
-  (func (;7;) (type 8)
+  (func (;7;) (type 10)
     call 4
   )
 )

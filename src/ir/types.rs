@@ -2,18 +2,31 @@ use crate::ast::{BinaryOp, Param, Type};
 
 /// Top-level IR representation of a program
 ///
-/// Contains IR statements and provides access to function metadata
-/// computed by IR passes.
+/// Contains the main function and all flattened functions.
+/// Nested functions are extracted to top-level by the function flattening pass.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRProgram {
-    /// Top-level IR statements
-    pub statements: Vec<IRStmt>,
+    /// Main entry point function
+    pub main_function: IRStmt,
+
+    /// All functions (including nested functions, flattened to top-level)
+    /// Populated by the function flattening pass
+    pub functions: Vec<IRStmt>,
 }
 
 impl IRProgram {
     /// Create a new IR program from statements
     pub fn new(statements: Vec<IRStmt>) -> Self {
-        Self { statements }
+        Self {
+            main_function: IRStmt::FunctionDef {
+                name: "main".to_string(),
+                params: vec![],
+                return_type: Type::Void,
+                body: statements,
+                metadata: None,
+            },
+            functions: vec![],
+        }
     }
 }
 
@@ -53,6 +66,12 @@ pub enum IRExprKind {
     VarArgs,
     /// Represents no value (used for void returns). Always has Type::Void.
     Unit,
+    /// Creates a closure by capturing variables and pairing with function pointer
+    /// Contains the function name and list of captured variable names
+    ClosureCreate {
+        func_name: String,
+        captured_vars: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,6 +87,7 @@ pub enum IRStmt {
         name: String,
         ty: Type,
         value: IRExpr,
+        is_super_assign: bool,
     },
     If {
         condition: IRExpr,
@@ -116,6 +136,28 @@ pub struct FunctionMetadata {
 
     /// Total number of locals (params + user vars + temps)
     pub local_count: u32,
+
+    pub captured_vars: Vec<CapturedVarInfo>,  // Empty if no captures
+    pub is_closure: bool,  // true if needs env struct
+}
+
+/// Information about a variable captured from parent scope (for closures)
+#[derive(Debug, Clone, PartialEq)]
+pub struct CapturedVarInfo {
+    /// Name of the captured variable
+    pub name: String,
+
+    /// Type of the captured variable
+    pub ty: Type,
+
+    /// Field index in the environment struct
+    /// Note: Field 0 is always the function code pointer (ref func)
+    /// Field 1..N are the captured variables
+    pub field_index: u32,
+
+    /// Whether this variable can be mutated via super-assignment (<<-)
+    /// If true, the struct field should be mutable or wrapped in a ref
+    pub is_mutable: bool,
 }
 
 /// Information about a single local variable
@@ -129,6 +171,8 @@ pub struct LocalVarInfo {
 
     /// WASM local index (0-based, parameters come first)
     pub index: u32,
+    
+    pub need_reference: bool,
 
     /// How this variable was introduced
     pub origin: VarOrigin,
