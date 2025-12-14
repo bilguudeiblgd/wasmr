@@ -1,5 +1,5 @@
 use rty_compiler::ast::Stmt;
-use rty_compiler::ir::{TypeResolver, IR};
+use rty_compiler::ir::{IRProgram, IRStmt, TypeResolver, IR};
 use rty_compiler::lexer::Lexer;
 use rty_compiler::parser::Parser;
 
@@ -8,6 +8,13 @@ fn parse_program(s: &str) -> Vec<Stmt> {
     let tokens = lexer.lex(&s.to_string());
     let mut parser = Parser::new(tokens);
     parser.parse_program().expect("parse failed")
+}
+
+fn get_main_body_len(ir: &IRProgram) -> usize {
+    match &ir.main_function {
+        IRStmt::FunctionDef { body, .. } => body.len(),
+        _ => panic!("main_function should be FunctionDef"),
+    }
 }
 
 #[test]
@@ -28,7 +35,7 @@ fn test_function_scoped_variables() {
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
     // Should succeed - y is visible throughout function
-    assert_eq!(ir.statements.len(), 1);
+    assert_eq!(get_main_body_len(&ir), 1);
 }
 
 #[test]
@@ -50,7 +57,7 @@ fn test_nested_function_scoping() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 1);
+    assert_eq!(get_main_body_len(&ir), 1);
 }
 
 #[test]
@@ -94,7 +101,7 @@ fn test_superassignment_to_parent_function() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 1);
+    assert_eq!(get_main_body_len(&ir), 1);
 }
 
 #[test]
@@ -132,7 +139,7 @@ fn test_loop_variables_function_scoped() {
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
     // Should succeed - i is visible throughout function
-    assert_eq!(ir.statements.len(), 1);
+    assert_eq!(get_main_body_len(&ir), 1);
 }
 
 #[test]
@@ -151,7 +158,7 @@ fn test_recursive_functions() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 1);
+    assert_eq!(get_main_body_len(&ir), 1);
 }
 
 #[test]
@@ -168,7 +175,7 @@ fn test_function_shadowing_variable() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 2);
+    assert_eq!(get_main_body_len(&ir), 2);
 }
 
 #[test]
@@ -192,7 +199,7 @@ fn test_nested_function_variable_independence() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 1);
+    assert_eq!(get_main_body_len(&ir), 1);
 }
 
 #[test]
@@ -215,7 +222,7 @@ fn test_closure_with_superassignment() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 1);
+    assert_eq!(get_main_body_len(&ir), 1);
 }
 
 #[test]
@@ -232,7 +239,7 @@ fn test_function_type_stored_in_scope() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 2);
+    assert_eq!(get_main_body_len(&ir), 2);
 }
 
 #[test]
@@ -260,7 +267,7 @@ fn test_multiple_nested_levels() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 1);
+    assert_eq!(get_main_body_len(&ir), 1);
 }
 
 #[test]
@@ -278,7 +285,7 @@ fn test_superassignment_to_global() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 2);
+    assert_eq!(get_main_body_len(&ir), 2);
 }
 
 #[test]
@@ -293,7 +300,7 @@ fn test_function_redefinition_same_scope() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 2);
+    assert_eq!(get_main_body_len(&ir), 2);
 }
 
 #[test]
@@ -315,7 +322,7 @@ fn test_while_loop_variables_function_scoped() {
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
     // Should succeed - y is visible throughout function
-    assert_eq!(ir.statements.len(), 1);
+    assert_eq!(get_main_body_len(&ir), 1);
 }
 
 #[test]
@@ -333,7 +340,7 @@ fn test_superassignment_with_function() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 2);
+    assert_eq!(get_main_body_len(&ir), 2);
 }
 
 #[test]
@@ -355,5 +362,5 @@ fn test_nested_function_parameter_shadows_parent() {
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
 
-    assert_eq!(ir.statements.len(), 1);
+    assert_eq!(get_main_body_len(&ir), 1);
 }

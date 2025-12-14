@@ -23,11 +23,18 @@ fn lower(src: &str) -> Result<IRProgram, TypeError> {
     IR::from_ast(ast, &mut resolver)
 }
 
+fn get_main_body(ir: &IRProgram) -> &[IRStmt] {
+    match &ir.main_function {
+        IRStmt::FunctionDef { body, .. } => body,
+        _ => panic!("main_function should be FunctionDef"),
+    }
+}
+
 #[test]
 fn lowers_builtin_c_numeric() {
     let ir = lower("a <- c(1, 2, 3)").expect("lower failed");
-    match &ir.statements[0] {
-        IRStmt::VarAssign { name, value, .. } => {
+    match &get_main_body(&ir)[0] {
+        IRStmt::VarAssign { name, value, is_super_assign: _, .. } => {
             assert_eq!(name, "a");
             match &value.kind {
                 IRExprKind::VectorLiteral(args) => {
@@ -63,7 +70,7 @@ fn lowers_builtin_list_of_vectors() {
     }];
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(program, &mut resolver).expect("lower failed");
-    match &ir.statements[0] {
+    match &get_main_body(&ir)[0] {
         IRStmt::VarAssign { value, .. } => match &value.kind {
             IRExprKind::BuiltinCall { builtin, args } => {
                 assert_eq!(*builtin, BuiltinKind::List);
@@ -120,7 +127,7 @@ fn builtin_c_varargs_forwarding() {
     }];
     let mut resolver = TypeResolver::new();
     let ir = IR::from_ast(program, &mut resolver).expect("lower failed");
-    match &ir.statements[0] {
+    match &get_main_body(&ir)[0] {
         IRStmt::FunctionDef { body, .. } => {
             assert_eq!(body.len(), 1);
             match &body[0] {
@@ -148,9 +155,9 @@ fn lower_simple_if_without_else() {
     resolver.define_var("x".into(), Type::Int);
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.statements.len(),1);
+    assert_eq!(get_main_body(&ir).len(), 1);
 
-    match &ir.statements[0] {
+    match &get_main_body(&ir)[0] {
         IRStmt::If {
             condition,
             then_branch,
@@ -180,9 +187,9 @@ fn lower_if_with_else() {
     resolver.define_var("b".into(), Type::Int);
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.statements.len(),1);
+    assert_eq!(get_main_body(&ir).len(), 1);
 
-    match &ir.statements[0] {
+    match &get_main_body(&ir)[0] {
         IRStmt::If {
             condition,
             then_branch,
@@ -222,10 +229,10 @@ fn lower_for_loop_with_range() {
     let mut resolver = TypeResolver::new();
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.statements.len(),2);
+    assert_eq!(get_main_body(&ir).len(), 2);
 
     // First statement should be sum initialization
-    match &ir.statements[0] {
+    match &get_main_body(&ir)[0] {
         IRStmt::VarAssign { name, ty, .. } => {
             assert_eq!(name, "sum");
             assert_eq!(ty, &Type::Int);
@@ -234,7 +241,7 @@ fn lower_for_loop_with_range() {
     }
 
     // Second statement should be the for loop
-    match &ir.statements[1] {
+    match &get_main_body(&ir)[1] {
         IRStmt::For {
             iter_var: iter_name,
             iter_expr,
@@ -257,7 +264,7 @@ fn lower_for_loop_with_range() {
             // Check the loop body
             assert_eq!(body.len(), 1);
             match &body[0] {
-                IRStmt::VarAssign { name, ty, value } => {
+                IRStmt::VarAssign { name, ty, value, .. } => {
                     assert_eq!(name, "sum");
                     assert_eq!(ty, &Type::Int);
                     assert_eq!(value.ty, Type::Int);
@@ -275,10 +282,10 @@ fn lower_for_loop_with_vector() {
     let mut resolver = TypeResolver::new();
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.statements.len(),2);
+    assert_eq!(get_main_body(&ir).len(), 2);
 
     // First statement should be vector initialization
-    match &ir.statements[0] {
+    match &get_main_body(&ir)[0] {
         IRStmt::VarAssign { name, ty, .. } => {
             assert_eq!(name, "my_vec");
             assert_eq!(ty, &Type::Vector(Box::new(Type::Int)));
@@ -287,7 +294,7 @@ fn lower_for_loop_with_vector() {
     }
 
     // Second statement should be the for loop
-    match &ir.statements[1] {
+    match &get_main_body(&ir)[1] {
         IRStmt::For {
             iter_var: iter_name,
             iter_expr,
@@ -330,11 +337,11 @@ fn lower_vector_index_read() {
     let mut resolver = TypeResolver::new();
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.statements.len(),2);
+    assert_eq!(get_main_body(&ir).len(), 2);
 
     // Second statement should be the index read
-    match &ir.statements[1] {
-        IRStmt::VarAssign { name, ty, value } => {
+    match &get_main_body(&ir)[1] {
+        IRStmt::VarAssign { name, ty, value, .. } => {
             assert_eq!(name, "x");
             assert_eq!(ty, &Type::Int); // Element type should be extracted
 
@@ -358,10 +365,10 @@ fn lower_vector_index_assign() {
     let mut resolver = TypeResolver::new();
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.statements.len(),2);
+    assert_eq!(get_main_body(&ir).len(), 2);
 
     // Second statement should be the index assignment
-    match &ir.statements[1] {
+    match &get_main_body(&ir)[1] {
         IRStmt::IndexAssign { target, index, value } => {
             assert_eq!(target.ty, Type::Vector(Box::new(Type::Int)));
             assert_eq!(index.ty, Type::Int);
@@ -391,10 +398,10 @@ fn lower_while_loop() {
     let mut resolver = TypeResolver::new();
 
     let ir = IR::from_ast(prog, &mut resolver).expect("lower failed");
-    assert_eq!(ir.statements.len(), 2);
+    assert_eq!(get_main_body(&ir).len(), 2);
 
     // First statement should be x initialization
-    match &ir.statements[0] {
+    match &get_main_body(&ir)[0] {
         IRStmt::VarAssign { name, ty, .. } => {
             assert_eq!(name, "x");
             assert_eq!(ty, &Type::Int);
@@ -403,7 +410,7 @@ fn lower_while_loop() {
     }
 
     // Second statement should be the while loop
-    match &ir.statements[1] {
+    match &get_main_body(&ir)[1] {
         IRStmt::While { condition, body } => {
             // Check condition is typed as Bool
             assert_eq!(condition.ty, Type::Bool);
@@ -421,7 +428,7 @@ fn lower_while_loop() {
             // Check the loop body
             assert_eq!(body.len(), 1);
             match &body[0] {
-                IRStmt::VarAssign { name, ty, value } => {
+                IRStmt::VarAssign { name, ty, value, .. } => {
                     assert_eq!(name, "x");
                     assert_eq!(ty, &Type::Int);
                     assert_eq!(value.ty, Type::Int);
