@@ -37,42 +37,57 @@ fn run() -> io::Result<()> {
             }
         }
     } else {
-        // Default: compile all .R files in data/ directory
+        // Default: compile all .R files in data/ directory (recursively)
         let data_dir = Path::new("data");
-        let entries = fs::read_dir(data_dir)?;
         let mut processed = 0usize;
         let mut failed = 0usize;
 
-        for entry in entries {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => {
-                    failed += 1;
-                    continue;
-                }
-            };
-            let path = entry.path();
-            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("R") {
-                match process_file(&lexer, &path) {
-                    Ok(out_path) => {
-                        println!(
-                            "Compiled {:?} -> {:?}",
-                            path.file_name().unwrap_or_default(),
-                            out_path
-                        );
-                        processed += 1;
-                    }
-                    Err(err) => {
-                        eprintln!("Failed {:?}: {err}", path.file_name().unwrap_or_default());
-                        failed += 1;
-                    }
-                }
-            }
-        }
+        // Recursively walk data/ directory
+        walk_dir(data_dir, &lexer, &mut processed, &mut failed)?;
 
         println!("Summary: processed = {processed}, failed = {failed}");
         Ok(())
     }
+}
+
+/// Recursively walk a directory and compile all .R files
+fn walk_dir(
+    dir: &Path,
+    lexer: &lexer::Lexer,
+    processed: &mut usize,
+    failed: &mut usize,
+) -> io::Result<()> {
+    let entries = fs::read_dir(dir)?;
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => {
+                *failed += 1;
+                continue;
+            }
+        };
+
+        let path = entry.path();
+
+        if path.is_dir() {
+            // Recursively process subdirectories
+            walk_dir(&path, lexer, processed, failed)?;
+        } else if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("R") {
+            match process_file(&lexer, &path) {
+                Ok(out_path) => {
+                    println!("Compiled {:?} -> {:?}", path, out_path);
+                    *processed += 1;
+                }
+                Err(err) => {
+                    eprintln!("Failed {:?}: {err}", path);
+                    *failed += 1;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn process_file(lexer: &lexer::Lexer, path: &Path) -> io::Result<PathBuf> {
@@ -93,7 +108,16 @@ fn process_file(lexer: &lexer::Lexer, path: &Path) -> io::Result<PathBuf> {
         }
     };
 
+    // Compute relative path from data/ to preserve directory structure
+    // e.g., "data/closures/simple.R" -> "closures/simple"
+    let data_dir = Path::new("data");
+    let relative_path = path
+        .strip_prefix(data_dir)
+        .unwrap_or(path)
+        .with_extension("");
+
+    let relative_path_str = relative_path.to_str().unwrap_or("out");
+
     // driver + write
-    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
-    driver::compile_and_write(program, stem)
+    driver::compile_and_write(program, relative_path_str)
 }

@@ -31,30 +31,29 @@ echo "  Rty Compiler Test Suite"
 echo "========================================="
 echo ""
 
-# Find all .R files in data_R/ directory (plain R versions for testing)
-for plain_r_file in data_R/*.R; do
-    # Check if data_R directory exists and has files
-    if [ ! -e "$plain_r_file" ]; then
-        echo -e "${RED}Error: data_R/ directory not found or empty${NC}"
-        echo "Please create data_R/ with plain R versions of your test files"
-        exit 1
-    fi
+# Find all .R files recursively in data_R/ directory (plain R versions for testing)
+while IFS= read -r -d '' plain_r_file; do
+    # Compute relative path from data_R/
+    rel_path="${plain_r_file#data_R/}"
+    rel_path_no_ext="${rel_path%.R}"
 
-    # Get the base filename without path and extension
-    basename=$(basename "$plain_r_file" .R)
-    wasm_file="data/wasm_out/${basename}.wasm"
-    rty_file="data/${basename}.R"
+    # Corresponding paths
+    rty_file="data/${rel_path}"
+    wasm_file="out/${rel_path_no_ext}.wasm"
+
+    # Display name for test output
+    test_name="${rel_path_no_ext}"
 
     # Skip if corresponding Rty file doesn't exist
     if [ ! -f "$rty_file" ]; then
-        echo -e "${YELLOW}[SKIP]${NC} $basename - no corresponding Rty file in data/"
+        echo -e "${YELLOW}[SKIP]${NC} $test_name - no corresponding Rty file in data/"
         ((SKIPPED++))
         continue
     fi
 
     # Skip if WASM file doesn't exist
     if [ ! -f "$wasm_file" ]; then
-        echo -e "${YELLOW}[SKIP]${NC} $basename - no WASM file"
+        echo -e "${YELLOW}[SKIP]${NC} $test_name - no WASM file"
         ((SKIPPED++))
         continue
     fi
@@ -65,7 +64,7 @@ for plain_r_file in data_R/*.R; do
 
     # Skip if R script failed to run
     if [ $r_exit -ne 0 ]; then
-        echo -e "${RED}[FAIL]${NC} $basename - R script failed"
+        echo -e "${RED}[FAIL]${NC} $test_name - R script failed"
         echo "  R output: $r_output"
         ((FAILED++))
         continue
@@ -77,7 +76,7 @@ for plain_r_file in data_R/*.R; do
 
     # Skip if WASM failed to run
     if [ $wasm_exit -ne 0 ]; then
-        echo -e "${YELLOW}[SKIP]${NC} $basename - WASM failed to execute"
+        echo -e "${YELLOW}[SKIP]${NC} $test_name - WASM failed to execute"
         ((SKIPPED++))
         continue
     fi
@@ -88,16 +87,16 @@ for plain_r_file in data_R/*.R; do
 
     # Compare normalized outputs
     if [ "$r_output_normalized" = "$wasm_output_normalized" ]; then
-        echo -e "${GREEN}[PASS]${NC} $basename"
+        echo -e "${GREEN}[PASS]${NC} $test_name"
         ((PASSED++))
     else
-        echo -e "${RED}[FAIL]${NC} $basename"
+        echo -e "${RED}[FAIL]${NC} $test_name"
         echo "  Expected (R):  $r_output"
         echo "  Got (WASM):    $wasm_output"
         echo "  (Normalized comparison failed)"
         ((FAILED++))
     fi
-done
+done < <(find data_R -type f -name "*.R" -print0)
 
 echo ""
 echo "========================================="
