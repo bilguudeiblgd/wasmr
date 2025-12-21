@@ -251,6 +251,11 @@ impl Parser {
 
         // Parse first parameter (or single type if not a function)
         loop {
+            if(self.peek().unwrap() == &Token::LParen && self.peek_nth(1).unwrap() == &Token::RParen) {
+                self.advance();
+                self.advance();
+                break
+            }
             let ty = self.parse_primary_type()?;
             param_types.push(ty);
 
