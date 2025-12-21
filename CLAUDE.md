@@ -61,20 +61,34 @@ cargo test -- --nocapture
    - Handles built-in functions like `c()`, `list()`, `print()`
    - Returns `IR` struct containing typed statements (`Vec<IRStmt>`)
 
-4. **Code Generation** (`src/codegen.rs`): Generates WebAssembly
-   - `WasmGenerator` produces WASM modules from typed IR
+4. **Backend** (`src/backend/`): Generates WebAssembly from typed IR
+   - `WasmGenerator` in `mod.rs` produces WASM modules
    - Uses `wasm-encoder` crate for WASM construction
-   - Tracks function indices and generates proper WASM types
-   - Handles vector operations using WASM GC array types
-   - Built-in runtime functions in `src/codegen_builtins.rs`
+   - Code emission organized in `emit/` submodule (expressions, statements, builtins, binary ops, functions, ref cells)
+   - WASM-specific utilities in `wasm/` submodule (type mapping, memory management, runtime helpers)
+   - Public API: `compile_to_wasm()` and `compile_to_wasm_ir()` in `io.rs`
+
+5. **Driver** (`src/driver/`): Orchestration and I/O
+   - Separates compilation orchestration from pure code generation
+   - `pipeline.rs`: Full compilation flows (`compile_and_write`, `compile_and_write_ir`)
+   - `io.rs`: File system operations for writing WASM/WAT files
+   - `conversion.rs`: Format transformations (WASM → WAT using wasmprinter)
+
+### Types Module
+
+The type system lives in a dedicated cross-cutting module used by all compilation phases:
+
+- **Types** (`src/types/`): Cross-cutting type definitions
+  - `ast_types.rs`: Core type definitions (`Type`, `Param`, `ParamKind` enums)
+  - `builtins.rs`: Built-in type utilities (`is_builtin_type_name()`, `map_builtin_type()`)
+  - Used by lexer, parser, IR, and backend - not coupled to any single phase
 
 ### Key Data Structures
 
 - **AST** (`src/ast.rs`): Untyped syntax tree
   - `Stmt`: Statements (assignments, returns, if/for, blocks)
   - `Expr`: Expressions (numbers, identifiers, function defs, calls, binary ops)
-  - `Type`: Type annotations (optional in AST, required after type resolution)
-  - `Param` and `ParamKind`: Function parameters including varargs support
+  - Uses types from `src/types/` module (not defined here)
 
 - **IR** (`src/ir.rs`): Typed intermediate representation
   - `IRStmt` and `IRExpr`: Similar to AST but all nodes have concrete types
@@ -82,9 +96,11 @@ cargo test -- --nocapture
   - `TypeResolver`: Type checking and inference engine
   - `TypeError`: Comprehensive error types for type checking failures
 
-- **WASM Generator** (`src/codegen.rs`):
-  - `WasmGenerator`: Main codegen struct with type/function/code sections
-  - `LocalContext`: Tracks local variable indices within functions
+- **Backend** (`src/backend/`):
+  - `WasmGenerator` (in `mod.rs`): Main codegen struct with type/function/code sections
+  - `LocalContext` (in `context.rs`): Tracks local variable indices and captured variables within functions
+  - Code emission split by construct (`emit/`): expressions, statements, builtins, binary ops, functions, ref cells
+  - WASM utilities (`wasm/`): type mapping, memory management, runtime helpers
   - Maps R types to WASM types (Int→I32, Float→F32, Double→F64, Vector→array refs)
 
 ### Type System
@@ -116,7 +132,7 @@ The language supports:
 ## Important Implementation Details
 
 ### Built-in Type Recognition
-Built-in type names are recognized in `src/lib.rs`:
+Built-in type names are recognized in `src/types/builtins.rs`:
 - `is_builtin_type_name()`: Checks if a string is a built-in type
 - `map_builtin_type()`: Maps type name strings to `Type` enum variants
 
@@ -168,21 +184,21 @@ The IR system uses a pass-based architecture:
 ### Adding a New Built-in Function
 1. Add to `BuiltinKind` enum in `src/ir.rs`
 2. Handle in `TypeResolver::resolve_builtin_call()` for type checking
-3. Implement codegen in `WasmGenerator::compile_builtin_call()` in `src/codegen.rs`
+3. Implement codegen in `WasmGenerator::compile_builtin_call()` in `src/backend/emit/builtins.rs`
 
 ### Adding a New Binary Operator
 1. Add token to `Token` enum in `src/lexer.rs` and lexing logic
 2. Add to `BinaryOp` enum in `src/ast.rs`
 3. Handle parsing in `Parser::match_comparison_or_range()` or similar
 4. Add type rules in `TypeResolver::resolve_binary_expr()`
-5. Implement WASM emission in `WasmGenerator::compile_expr()` match arm
+5. Implement WASM emission in `WasmGenerator::gen_binary_op()` in `src/backend/emit/binary_ops.rs`
 
 ### Adding a New Statement Type
 1. Add variant to `Stmt` enum in `src/ast.rs`
 2. Add parsing logic in `Parser::parse_statement()`
 3. Add to `IRStmt` enum in `src/ir.rs`
 4. Implement type resolution in `TypeResolver::resolve_stmt()`
-5. Add codegen in `WasmGenerator::compile_stmt()`
+5. Add codegen in `WasmGenerator::gen_stmt()` in `src/backend/emit/statements.rs`
 
 ## Test Data
 Example R source files are in `data/*.R`. These are compiled when running `cargo run` and serve as integration test cases.

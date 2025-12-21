@@ -5,7 +5,7 @@ use super::super::WasmGenerator;
 impl WasmGenerator {
     pub(crate) fn setup_wasi_imports(&mut self) {
         // Define the fd_write function type: (i32, i32, i32, i32) -> i32
-        let fd_write_type_idx = self.types.len() as u32;
+        let fd_write_type_idx = self.type_count;
         {
             let ty = self.types.ty();
             ty.function(
@@ -13,6 +13,7 @@ impl WasmGenerator {
                 vec![ValType::I32],
             );
         }
+        self.type_count += 1;
 
         // Import fd_write from wasi_snapshot_preview1
         self.imports.import(

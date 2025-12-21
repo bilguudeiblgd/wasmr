@@ -67,12 +67,6 @@ pub enum IRExprKind {
     VarArgs,
     /// Represents no value (used for void returns). Always has Type::Void.
     Unit,
-    /// Creates a closure by capturing variables and pairing with function pointer
-    /// Contains the function name and list of captured variable names
-    ClosureCreate {
-        func_name: String,
-        captured_vars: Vec<String>,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

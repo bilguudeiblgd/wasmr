@@ -19,6 +19,7 @@ pub enum Type {
     /// Internal type used to represent packed `...` values.
     VarArgs,
     /// Function type with signature: parameters and return type
+    /// May represent either a bare function or a closure (determined at codegen)
     Function {
         params: Vec<Param>,
         return_type: Box<Type>,

@@ -26,15 +26,18 @@ impl WasmGenerator {
                 if let Some(captured) = ctx.get_captured(name) {
                     if *is_super_assign {
                         // Super-assignment to captured variable
-                        let env_param_idx = ctx.env_param_index().expect("Function with captured vars should have env param");
-                        let env_struct_type_idx = ctx.env_struct_type_idx().expect("Function with captured vars should have env struct type");
+                        // Use typed (downcasted) environment for field access
+                        let typed_env_local = ctx.typed_env_local()
+                            .expect("Function with captured vars should have typed env local");
+                        let concrete_env_type = ctx.concrete_env_type_idx()
+                            .expect("Function with captured vars should have concrete env type");
 
                         if captured.is_mutable {
                             // The captured variable is a ref cell
-                            // 1. Load env and extract ref cell
-                            func.instruction(&Instruction::LocalGet(env_param_idx));
+                            // 1. Load typed env and extract ref cell
+                            func.instruction(&Instruction::LocalGet(typed_env_local));
                             func.instruction(&Instruction::StructGet {
-                                struct_type_index: env_struct_type_idx,
+                                struct_type_index: concrete_env_type,
                                 field_index: captured.field_index,
                             });
 
@@ -49,15 +52,15 @@ impl WasmGenerator {
                             });
                         } else {
                             // Direct field in environment struct (not wrapped in ref cell)
-                            // 1. Load env
-                            func.instruction(&Instruction::LocalGet(env_param_idx));
+                            // 1. Load typed env
+                            func.instruction(&Instruction::LocalGet(typed_env_local));
 
                             // 2. Generate value
                             self.gen_expr(func, ctx, value);
 
                             // 3. Set the field
                             func.instruction(&Instruction::StructSet {
-                                struct_type_index: env_struct_type_idx,
+                                struct_type_index: concrete_env_type,
                                 field_index: captured.field_index,
                             });
                         }

@@ -15,7 +15,7 @@ use crate::types::Type;
 use context::LocalContext;
 use crate::ir::{FunctionMetadata, IRProgram, IRStmt as Stmt};
 use std::collections::HashMap;
-use wasm_encoder::{CodeSection, DataSection, ExportKind, ExportSection, FieldType, Function, FunctionSection, ImportSection, Instruction, MemorySection, Module, RefType, StorageType, StructType, TypeSection, ValType};
+use wasm_encoder::{CodeSection, CompositeInnerType, CompositeType, DataSection, ExportKind, ExportSection, FieldType, FuncType, Function, FunctionSection, HeapType, ImportSection, Instruction, MemorySection, Module, RefType, StorageType, StructType, SubType, TypeSection, ValType};
 
 // Function signature for tracking unique function types
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
@@ -35,6 +35,7 @@ pub struct WasmGenerator {
     pub(crate) code: CodeSection,
     pub(crate) func_indices: HashMap<String, u32>,
     pub(crate) func_count: u32,
+    type_count: u32,  // Manual tracking for recursion groups
     pub(crate) fd_write_idx: Option<u32>,
     array_type_i32: Option<u32>,
     array_type_f32: Option<u32>,
@@ -42,10 +43,12 @@ pub struct WasmGenerator {
     array_type_anyref: Option<u32>,
     // Map function signatures to type indices for typed funcrefs
     func_type_indices: HashMap<FunctionSignature, u32>,
-    // Map function name to environment struct type index (for functions with captured vars)
-    pub(crate) env_struct_types: HashMap<String, u32>,
-    // Map environment structure to type index (for deduplicating identical env types)
-    pub(crate) env_struct_type_cache: HashMap<String, u32>,
+    // Map function signature to (closure_func_type_idx, base_env_type_idx) for subtyping
+    base_env_types: HashMap<FunctionSignature, (u32, u32)>,
+    // Map function name to (closure_func_type_idx, base_type_idx, concrete_env_type_idx) for functions with captured vars
+    pub(crate) env_struct_types: HashMap<String, (u32, u32, u32)>,
+    // Map environment structure to (closure_func_type_idx, base_type_idx, concrete_type_idx)
+    pub(crate) env_struct_type_cache: HashMap<String, (u32, u32, u32)>,
     // Map function name to metadata (for accessing captured variables in gen_call)
     func_metadata: HashMap<String, Box<FunctionMetadata>>,
     // Map type to reference cell struct type index (for super-assignment)
@@ -65,12 +68,14 @@ impl WasmGenerator {
             code: CodeSection::new(),
             func_indices: HashMap::new(),
             func_count: 0,
+            type_count: 0,
             fd_write_idx: None,
             array_type_i32: None,
             array_type_f32: None,
             array_type_f64: None,
             array_type_anyref: None,
             func_type_indices: HashMap::new(),
+            base_env_types: HashMap::new(),
             env_struct_types: HashMap::new(),
             env_struct_type_cache: HashMap::new(),
             func_metadata: HashMap::new(),
@@ -103,11 +108,12 @@ impl WasmGenerator {
             vec![]
         };
 
-        let main_type_index = self.types.len() as u32;
+        let main_type_index = self.type_count;
         {
             let ty = self.types.ty();
             ty.function(param_tys, result_tys);
         }
+        self.type_count += 1;
         self.functions.function(main_type_index);
 
         let main_func_index = self.func_count;
@@ -123,10 +129,8 @@ impl WasmGenerator {
             }
         }
 
-        // PASS 2: Declare function types and create environment struct types for functions with captured vars
-        // Reset func_count to start from where we left off after main
-        let mut current_func_idx = main_func_index + 1;
-
+        // PASS 2A: First pass - create environment struct types for all closures
+        // This populates base_env_types before we process any function return types
         for func_stmt in &program.functions {
             if let Stmt::FunctionDef { name, params, return_type, metadata, .. } = func_stmt {
                 let metadata = metadata.as_ref().expect("All functions should have metadata after passes");
@@ -134,42 +138,79 @@ impl WasmGenerator {
                 // Store metadata for use in gen_call
                 self.func_metadata.insert(name.clone(), metadata.clone());
 
-                // Declare function type
-                let mut param_tys: Vec<ValType> = params.iter().map(|p| self.wasm_param_valtype(p)).collect();
+                eprintln!("Function {}: {} captured vars", name, metadata.captured_vars.len());
+                for cap in &metadata.captured_vars {
+                    eprintln!("  - {} (mutable: {})", cap.name, cap.is_mutable);
+                }
 
-                // If there's captured variables, create an environment struct type
+                // If this function has captured variables, create environment struct types now
                 if metadata.captured_vars.len() > 0 {
-                    // First, get the function type index for the bare function (without env)
                     let bare_param_types: Vec<Type> = params.iter()
                         .filter_map(|p| match &p.kind {
                             crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
                             crate::types::ParamKind::VarArgs => None,
                         })
                         .collect();
-                    let bare_func_type_idx = self.get_or_create_func_type_index(&bare_param_types, return_type);
-                    // Create environment struct type
-                    let _env_type_idx = self.get_or_create_env_struct_type(
+
+                    let func_idx = *self.func_indices.get(name).expect("Function should be registered");
+
+                    // Create base and concrete environment struct types
+                    // This populates base_env_types for this function signature
+                    self.get_or_create_env_struct_type(
                         name,
+                        &bare_param_types,
+                        return_type,
                         &metadata.captured_vars,
-                        bare_func_type_idx
+                        func_idx
                     );
-
-                    // Add environment as first parameter
-                    let env_valtype = self.env_struct_valtype(_env_type_idx);
-                    param_tys.insert(0, env_valtype);
                 }
+            }
+        }
 
-                let result_tys: Vec<ValType> = if *return_type != Type::Void {
-                    vec![self.wasm_valtype(return_type)]
+        // PASS 2B: Second pass - declare function types
+        // Now base_env_types is populated, so wasm_valtype can correctly handle closure return types
+        let mut current_func_idx = main_func_index + 1;
+
+        for func_stmt in &program.functions {
+            if let Stmt::FunctionDef { name, params, return_type, metadata, .. } = func_stmt {
+                let metadata = metadata.as_ref().expect("All functions should have metadata after passes");
+
+                // Declare function type
+                let mut param_tys: Vec<ValType> = params.iter().map(|p| self.wasm_param_valtype(p)).collect();
+
+                // Determine which type index to use
+                let type_index = if metadata.captured_vars.len() > 0 {
+                    // Closure - use the closure function type created in PASS 2A
+                    let bare_param_types: Vec<Type> = params.iter()
+                        .filter_map(|p| match &p.kind {
+                            crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
+                            crate::types::ParamKind::VarArgs => None,
+                        })
+                        .collect();
+
+                    let (closure_func_type_idx, base_env_type_idx) =
+                        self.get_closure_info_for_signature(&bare_param_types, return_type)
+                        .expect("Closure should have been registered in PASS 2A");
+
+                    // The closure function type index
+                    closure_func_type_idx
                 } else {
-                    vec![]
+                    // Bare function - create regular function type
+                    let result_tys: Vec<ValType> = if *return_type != Type::Void {
+                        vec![self.wasm_valtype(return_type)]
+                    } else {
+                        vec![]
+                    };
+
+                    let type_idx = self.type_count;
+                    {
+                        let ty = self.types.ty();
+                        ty.function(param_tys, result_tys);
+                    }
+                    self.type_count += 1;
+                    type_idx
                 };
 
-                let type_index = self.types.len() as u32;
-                {
-                    let ty = self.types.ty();
-                    ty.function(param_tys, result_tys);
-                }
                 self.functions.function(type_index);
 
                 current_func_idx += 1;
@@ -189,9 +230,9 @@ impl WasmGenerator {
                     // Variable needs to be in a reference cell (for super-assignment)
                     let ref_cell_type_idx = self.get_or_create_ref_cell_type(&var_info.ty);
                     self.ref_cell_valtype(ref_cell_type_idx)
-                } else if let Some(&env_type_idx) = self.env_struct_types.get(&var_info.name) {
-                    // This variable holds a function with environment - use the environment struct type
-                    self.env_struct_valtype(env_type_idx)
+                } else if let Some(&(_closure_func_type_idx, base_type_idx, _concrete_type_idx)) = self.env_struct_types.get(&var_info.name) {
+                    // This variable holds a function with environment - use the base environment struct type
+                    self.env_struct_valtype(base_type_idx)
                 } else {
                     // Regular variable
                     self.wasm_valtype(&var_info.ty)
@@ -217,8 +258,9 @@ impl WasmGenerator {
                 let metadata = metadata.as_ref().expect("All functions should have metadata after passes");
 
                 // Get environment struct type if this function has captured variables
+                // Use the base type index for the function parameter
                 let env_struct_type_idx = if metadata.captured_vars.len() > 0 {
-                    self.env_struct_types.get(name).copied()
+                    self.env_struct_types.get(name).map(|(_closure_func_idx, base_idx, _)| *base_idx)
                 } else {
                     None
                 };
@@ -228,10 +270,16 @@ impl WasmGenerator {
 
                 // Define function body
                 let ret_has_value = *return_type != Type::Void;
-                let param_count = params.len() as u32;
-                let non_param_vars = &metadata.local_vars[param_count as usize..];
+                let ir_param_count = params.len() as u32;  // Number of params in IR (before adding env)
+                let has_captured_vars = metadata.captured_vars.len() > 0;
+                let wasm_param_count = if has_captured_vars {
+                    ir_param_count + 1  // Add 1 for environment parameter
+                } else {
+                    ir_param_count
+                };
+                let non_param_vars = &metadata.local_vars[ir_param_count as usize..];
 
-                let local_types: Vec<(u32, ValType)> = non_param_vars
+                let mut local_types: Vec<(u32, ValType)> = non_param_vars
                     .iter()
                     .map(|var_info| {
                         // Determine the WASM type for this local variable
@@ -239,8 +287,9 @@ impl WasmGenerator {
                             // Variable needs to be in a reference cell (for super-assignment)
                             let ref_cell_type_idx = self.get_or_create_ref_cell_type(&var_info.ty);
                             self.ref_cell_valtype(ref_cell_type_idx)
-                        } else if let Some(&env_type_idx) = self.env_struct_types.get(&var_info.name) {
-                            self.env_struct_valtype(env_type_idx)
+                        } else if let Some(&(_closure_func_type_idx, base_type_idx, _concrete_type_idx)) = self.env_struct_types.get(&var_info.name) {
+                            // This variable holds a function with environment - use the base environment struct type
+                            self.env_struct_valtype(base_type_idx)
                         } else {
                             self.wasm_valtype(&var_info.ty)
                         };
@@ -248,14 +297,50 @@ impl WasmGenerator {
                     })
                     .collect();
 
+                // If this function has captured variables, add a local for the downcasted typed environment
+                let (typed_env_local, concrete_env_type_idx) = if has_captured_vars {
+                    let (base_idx, concrete_idx) = env_struct_type_idx
+                        .and_then(|base_idx| {
+                            self.env_struct_types.get(name).map(|(_closure_func_idx, b, c)| (*b, *c))
+                        })
+                        .unwrap_or_else(|| {
+                            // This shouldn't happen, but provide defaults
+                            (0, 0)
+                        });
+
+                    // Add typed environment local: (ref $concrete_type)
+                    let typed_env_valtype = self.env_struct_valtype(concrete_idx);
+                    local_types.push((1, typed_env_valtype));
+
+                    // Calculate local index: WASM parameters (including env) + existing locals
+                    let typed_env_idx = wasm_param_count + (local_types.len() as u32) - 1;
+                    (Some(typed_env_idx), Some(concrete_idx))
+                } else {
+                    (None, None)
+                };
+
                 let mut func = Function::new(local_types);
 
                 // Create context with environment info for functions with captured variables
                 let ctx = if metadata.captured_vars.len() > 0 {
-                    LocalContext::from_metadata_with_env(metadata, Some(0), env_struct_type_idx) // Environment is always param 0
+                    LocalContext::from_metadata_with_env(
+                        metadata,
+                        Some(0),  // Environment is always param 0
+                        env_struct_type_idx,  // Base type
+                        concrete_env_type_idx,  // Concrete type for downcasting
+                        typed_env_local  // Local index of downcasted environment
+                    )
                 } else {
                     LocalContext::from_metadata(metadata)
                 };
+
+                // If this is a closure, emit downcast at start of function
+                if let (Some(concrete_idx), Some(typed_local)) = (concrete_env_type_idx, typed_env_local) {
+                    // Downcast: (local.set $typed_env (ref.cast (ref $concrete) (local.get 0)))
+                    func.instruction(&Instruction::LocalGet(0)); // Load environment parameter (base type)
+                    func.instruction(&Instruction::RefCastNonNull(HeapType::Concrete(concrete_idx))); // Downcast to concrete type
+                    func.instruction(&Instruction::LocalSet(typed_local)); // Store in typed local
+                }
 
                 // Generate function statements
                 for stmt in body {
@@ -272,11 +357,12 @@ impl WasmGenerator {
 
         // Create _start function: () -> ()
         // This function calls main and is the entry point
-        let start_type_index = self.types.len() as u32;
+        let start_type_index = self.type_count;
         {
             let ty = self.types.ty();
             ty.function(vec![], vec![]);
         }
+        self.type_count += 1;
         self.functions.function(start_type_index);
 
         let start_func_idx = self.func_count;
@@ -344,10 +430,154 @@ impl WasmGenerator {
             vec![self.wasm_valtype(return_type)]
         };
 
-        let type_idx = self.types.len() as u32;
+        let type_idx = self.type_count;
         self.types.ty().function(param_vals, result_vals);
+        self.type_count += 1;
         self.func_type_indices.insert(sig, type_idx);
 
         type_idx
+    }
+
+    /// Get or create a function type for closures (includes environment parameter)
+    /// This is the type of the actual WASM function implementation
+    pub(crate) fn get_closure_func_type_index(
+        &mut self,
+        param_types: &[Type],
+        return_type: &Type,
+        base_env_type_idx: u32,
+    ) -> u32 {
+        // For closures, prepend the environment parameter to the signature
+        let mut closure_params = vec![Type::Void]; // Placeholder for env (we'll use base_env_type_idx)
+        closure_params.extend_from_slice(param_types);
+
+        let sig = FunctionSignature {
+            param_types: closure_params,
+            return_type: return_type.clone(),
+        };
+
+        if let Some(&idx) = self.func_type_indices.get(&sig) {
+            return idx;
+        }
+
+        // Create function type with environment as first parameter
+        let mut param_vals: Vec<ValType> = vec![self.env_struct_valtype(base_env_type_idx)];
+        param_vals.extend(param_types.iter().map(|t| self.wasm_valtype(t)));
+
+        let result_vals = if *return_type == Type::Void {
+            vec![]
+        } else {
+            vec![self.wasm_valtype(return_type)]
+        };
+
+        let type_idx = self.type_count;
+        self.types.ty().function(param_vals, result_vals);
+        self.type_count += 1;
+        self.func_type_indices.insert(sig, type_idx);
+
+        type_idx
+    }
+
+    /// Get or create a base environment struct type for closures
+    /// The base type contains only the function pointer and is open for subtyping
+    /// This enables type abstraction for closures with different captured variables
+    ///
+    /// This creates mutually recursive types in a recursion group:
+    /// - Closure function type: (func (param (ref $base)) ...)
+    /// - Base struct type: (struct (field (ref $closure_func)))
+    ///
+    /// Returns (closure_func_type_idx, base_type_idx)
+    pub(crate) fn get_or_create_base_env_type(
+        &mut self,
+        param_types: &[Type],
+        return_type: &Type,
+    ) -> (u32, u32) {
+        let sig = FunctionSignature {
+            param_types: param_types.to_vec(),
+            return_type: return_type.clone(),
+        };
+
+        // Check cache first
+        if let Some(&indices) = self.base_env_types.get(&sig) {
+            return indices;
+        }
+
+        // We need to create mutually recursive types in a recursion group:
+        // type[N]: (func (param (ref N+1)) ...) - closure function type
+        // type[N+1]: (struct (field (ref N)))    - base struct type
+        //
+        // In WASM GC, mutually recursive types must be in a recursion group
+
+        // Recursion groups create multiple types with consecutive indices
+        // We need to manually track the indices since .rec() is a single operation
+        let type_count_before = self.type_count;
+        let closure_func_type_idx = type_count_before;
+        let base_type_idx = type_count_before + 1;
+
+        // Prepare closure function type parameters: (ref $base), <user params...>
+        let mut param_vals: Vec<ValType> = vec![self.env_struct_valtype(base_type_idx)];
+        param_vals.extend(param_types.iter().map(|t| self.wasm_valtype(t)));
+
+        let result_vals = if *return_type == Type::Void {
+            vec![]
+        } else {
+            vec![self.wasm_valtype(return_type)]
+        };
+
+        // Prepare base struct field: (ref $closure_func_type)
+        let func_ref_type = ValType::Ref(RefType {
+            nullable: false,
+            heap_type: HeapType::Concrete(closure_func_type_idx),
+        });
+
+        let field = FieldType {
+            element_type: StorageType::Val(func_ref_type),
+            mutable: false,
+        };
+
+        // Create both types in a recursion group
+        self.types.ty().rec(vec![
+            // Type N: closure function type
+            SubType {
+                is_final: false,
+                supertype_idx: None,
+                composite_type: CompositeType {
+                    inner: CompositeInnerType::Func(wasm_encoder::FuncType::new(param_vals, result_vals)),
+                    shared: false,
+                },
+            },
+            // Type N+1: base struct type
+            SubType {
+                is_final: false,
+                supertype_idx: None,
+                composite_type: CompositeType {
+                    inner: CompositeInnerType::Struct(StructType {
+                        fields: Box::new([field]),
+                    }),
+                    shared: false,
+                },
+            },
+        ]);
+
+        // Recursion group creates 2 types
+        self.type_count += 2;
+
+        // Cache both indices
+        self.base_env_types.insert(sig, (closure_func_type_idx, base_type_idx));
+
+        (closure_func_type_idx, base_type_idx)
+    }
+
+    /// Check if a function signature corresponds to a closure (has environment)
+    /// Returns Some((closure_func_type_idx, base_type_idx)) if it's a closure, None if bare function
+    pub(crate) fn get_closure_info_for_signature(
+        &self,
+        param_types: &[Type],
+        return_type: &Type,
+    ) -> Option<(u32, u32)> {
+        let sig = FunctionSignature {
+            param_types: param_types.to_vec(),
+            return_type: return_type.clone(),
+        };
+        self.base_env_types.get(&sig).copied()
     }
 }

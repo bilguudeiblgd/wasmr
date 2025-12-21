@@ -6,6 +6,11 @@ use super::type_resolver::{TypeResolver, FunctionCtx, BuiltinDescriptor};
 
 /// Compare two types for compatibility, ignoring parameter names in function types
 fn types_compatible(t1: &Type, t2: &Type) -> bool {
+    // Type::Any is compatible with any type (acts as a wildcard)
+    if matches!(t1, Type::Any) || matches!(t2, Type::Any) {
+        return true;
+    }
+
     match (t1, t2) {
         (Type::Function { params: p1, return_type: r1 }, Type::Function { params: p2, return_type: r2 }) => {
             // Check same number of parameters

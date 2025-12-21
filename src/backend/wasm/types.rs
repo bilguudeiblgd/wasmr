@@ -9,7 +9,7 @@ impl WasmGenerator {
             Type::Int | Type::Bool | Type::Char => ValType::I32,
             Type::Float => ValType::F32,
             Type::Double => ValType::F64,
-            // For function types, create a typed funcref
+            // For function types, check if it's a closure or bare function
             Type::Function { params, return_type } => {
                 // Extract parameter types from Param structs
                 let param_types: Vec<Type> = params
@@ -20,14 +20,23 @@ impl WasmGenerator {
                     })
                     .collect();
 
-                // Get or create the function type index
-                let type_idx = self.get_or_create_func_type_index(&param_types, return_type);
-
-                // Return a typed funcref
-                ValType::Ref(RefType {
-                    nullable: false,
-                    heap_type: HeapType::Concrete(type_idx),
-                })
+                // Check if this signature corresponds to a closure
+                if let Some((_closure_func_idx, base_type_idx)) =
+                    self.get_closure_info_for_signature(&param_types, return_type)
+                {
+                    // This is a closure - return environment struct type
+                    ValType::Ref(RefType {
+                        nullable: false,
+                        heap_type: HeapType::Concrete(base_type_idx),
+                    })
+                } else {
+                    // Bare function - return funcref
+                    let type_idx = self.get_or_create_func_type_index(&param_types, return_type);
+                    ValType::Ref(RefType {
+                        nullable: false,
+                        heap_type: HeapType::Concrete(type_idx),
+                    })
+                }
             }
             // #TODO: Shouldn't be ANYREF
             Type::List | Type::VarArgs | Type::Any => {
@@ -75,11 +84,12 @@ impl WasmGenerator {
                 if let Some(idx) = self.array_type_i32 {
                     idx
                 } else {
-                    let index = self.types.len() as u32;
+                    let index = self.type_count;
                     {
                         let ty = self.types.ty();
                         ty.array(storage, true);
                     }
+                    self.type_count += 1;
                     self.array_type_i32 = Some(index);
                     index
                 }
@@ -88,11 +98,12 @@ impl WasmGenerator {
                 if let Some(idx) = self.array_type_f32 {
                     idx
                 } else {
-                    let index = self.types.len() as u32;
+                    let index = self.type_count;
                     {
                         let ty = self.types.ty();
                         ty.array(storage, true);
                     }
+                    self.type_count += 1;
                     self.array_type_f32 = Some(index);
                     index
                 }
@@ -101,11 +112,12 @@ impl WasmGenerator {
                 if let Some(idx) = self.array_type_f64 {
                     idx
                 } else {
-                    let index = self.types.len() as u32;
+                    let index = self.type_count;
                     {
                         let ty = self.types.ty();
                         ty.array(storage, true);
                     }
+                    self.type_count += 1;
                     self.array_type_f64 = Some(index);
                     index
                 }
@@ -114,11 +126,12 @@ impl WasmGenerator {
                 if let Some(idx) = self.array_type_anyref {
                     idx
                 } else {
-                    let index = self.types.len() as u32;
+                    let index = self.type_count;
                     {
                         let ty = self.types.ty();
                         ty.array(storage, true);
                     }
+                    self.type_count += 1;
                     self.array_type_anyref = Some(index);
                     index
                 }

@@ -1,78 +1,14 @@
 use crate::types::Type;
 use crate::ir::{IRExpr, IRExprKind};
-use wasm_encoder::{Function, HeapType, Instruction};
+use wasm_encoder::{Function, HeapType, Ieee32, Ieee64, Instruction};
 
 use super::super::{context::LocalContext, WasmGenerator};
-
-impl WasmGenerator {
-    /// Generate function value with environment: allocate environment struct with captured variables
-    /// NOTE: Currently unused - functions with captured vars receive env as parameter, not stored as value
-    ///
-    /// Creates a struct containing:
-    /// - Field 0: function pointer (ref func)
-    /// - Field 1..N: captured variable values
-    ///
-    /// Leaves the struct reference on the stack
-    pub(crate) fn gen_closure_create(
-        &mut self,
-        func: &mut Function,
-        ctx: &LocalContext,
-        func_name: &str,
-        captured_vars: &[String],
-        _func_ty: &Type,
-    ) {
-        // Get the function index
-        let func_idx = *self.func_indices.get(func_name)
-            .expect("Function should be in func_indices");
-
-        // Get the environment struct type index
-        let env_struct_type_idx = *self.env_struct_types.get(func_name)
-            .expect("Function with captured vars should have environment struct type");
-
-        // Emit values in field order: field 0 (func_ptr), then fields 1..N (captured vars)
-
-        // Field 0: Push function pointer
-        func.instruction(&Instruction::RefFunc(func_idx));
-
-        // Fields 1..N: Push captured variable values
-        for var_name in captured_vars {
-            // Check if it's in local variables OR in our captured variables (transitive)
-            if let Some(local_idx) = ctx.get_local(var_name) {
-                // Variable is in our local variables
-                func.instruction(&Instruction::LocalGet(local_idx));
-            } else if let Some(captured_info) = ctx.get_captured(var_name) {
-                // Variable is in our captured vars (we also capture it transitively)
-                // Load it from our environment parameter
-                let env_idx = ctx.env_param_index()
-                    .expect("Function with captured vars should have env param");
-                let env_type_idx = ctx.env_struct_type_idx()
-                    .expect("Function with captured vars should have env type");
-
-                // Load environment and extract the field
-                func.instruction(&Instruction::LocalGet(env_idx));
-                func.instruction(&Instruction::StructGet {
-                    struct_type_index: env_type_idx,
-                    field_index: captured_info.field_index,
-                });
-            } else {
-                // Unknown variable - push 0 as fallback
-                eprintln!("Warning: captured variable {} not found in context", var_name);
-                func.instruction(&Instruction::I32Const(0));
-            }
-        }
-
-        // Create the struct with all fields on stack
-        // struct.new expects: [field_0_val, field_1_val, ..., field_N_val] -> struct_ref
-        func.instruction(&Instruction::StructNew(env_struct_type_idx));
-    }
-}
 
 impl WasmGenerator {
     pub(crate) fn gen_expr(&mut self, func: &mut Function, ctx: &LocalContext, expr: &IRExpr) {
         match &expr.kind {
             IRExprKind::Number(n) => {
-                let v: i32 = n.parse().unwrap_or(0);
-                func.instruction(&Instruction::I32Const(v));
+                self.gen_number(func, ctx, &expr.ty, n);
             }
             IRExprKind::Binary { left, op, right } => {
                 self.gen_binary_op(func, ctx, op, left, right)
@@ -80,12 +16,16 @@ impl WasmGenerator {
             IRExprKind::Identifier(name) => {
                 // Check if this is a captured variable (from parent scope, passed via environment)
                 if let Some(captured_info) = ctx.get_captured(name) {
-                    // Load from environment struct
-                    let env_index = ctx.env_param_index().unwrap();
-                    let env_struct_index = ctx.env_struct_type_idx().unwrap();
-                    func.instruction(&Instruction::LocalGet(env_index));
+                    // Load from downcasted typed environment struct
+                    // Use typed_env_local (downcasted) and concrete type for field access
+                    let typed_env_local = ctx.typed_env_local()
+                        .expect("Function with captured vars should have typed env local");
+                    let concrete_env_type = ctx.concrete_env_type_idx()
+                        .expect("Function with captured vars should have concrete env type");
+
+                    func.instruction(&Instruction::LocalGet(typed_env_local));
                     func.instruction(&Instruction::StructGet {
-                        struct_type_index: env_struct_index,
+                        struct_type_index: concrete_env_type,
                         field_index: captured_info.field_index
                     });
 
@@ -107,8 +47,53 @@ impl WasmGenerator {
                 }
                 // Check if this is a function name being used as a value
                 else if let Some(&func_idx) = self.func_indices.get(name) {
-                    // This is a function used as a value - emit ref.func
-                    func.instruction(&Instruction::RefFunc(func_idx));
+                    // Check if this function has captured variables (is a closure)
+                    let has_captured_vars = self.func_metadata.get(name)
+                        .map(|meta| !meta.captured_vars.is_empty())
+                        .unwrap_or(false);
+
+                    if has_captured_vars {
+                        // This is a closure - create environment struct
+                        let metadata = self.func_metadata.get(name).unwrap();
+                        let (_closure_func_type_idx, _base_type_idx, concrete_type_idx) = *self.env_struct_types.get(name)
+                            .expect("Function with captured vars should have env type");
+
+                        // Field 0: function pointer
+                        func.instruction(&Instruction::RefFunc(func_idx));
+
+                        // Fields 1..N: captured variable values
+                        for captured in &metadata.captured_vars {
+                            // Get the captured variable from current context
+                            if let Some(local_idx) = ctx.get_local(&captured.name) {
+                                // Variable is in our local variables
+                                func.instruction(&Instruction::LocalGet(local_idx));
+                            } else if let Some(caller_captured) = ctx.get_captured(&captured.name) {
+                                // Variable is in our captured vars (transitive capture)
+                                // Use the downcasted typed environment to access concrete fields
+                                let typed_env_local = ctx.typed_env_local()
+                                    .expect("Function with captured vars should have typed env local");
+                                let concrete_env_type = ctx.concrete_env_type_idx()
+                                    .expect("Function with captured vars should have concrete env type");
+
+                                // Load downcasted environment and extract the field
+                                func.instruction(&Instruction::LocalGet(typed_env_local));
+                                func.instruction(&Instruction::StructGet {
+                                    struct_type_index: concrete_env_type,
+                                    field_index: caller_captured.field_index,
+                                });
+                            } else {
+                                // Variable not found - shouldn't happen
+                                eprintln!("Warning: captured variable {} not found when creating closure", captured.name);
+                                func.instruction(&Instruction::I32Const(0));
+                            }
+                        }
+
+                        // Create the closure struct (automatically upcasted to base type)
+                        func.instruction(&Instruction::StructNew(concrete_type_idx));
+                    } else {
+                        // Regular function without captures - just emit ref.func
+                        func.instruction(&Instruction::RefFunc(func_idx));
+                    }
                 } else if let Some(idx) = ctx.get_local(name) {
                     // Local variable - might be in a reference cell
                     if ctx.needs_ref_cell(name) {
@@ -165,9 +150,6 @@ impl WasmGenerator {
             IRExprKind::XString(_s) => {
                 func.instruction(&Instruction::I32Const(0));
             }
-            IRExprKind::ClosureCreate { func_name, captured_vars } => {
-                self.gen_closure_create(func, ctx, func_name, captured_vars, &expr.ty);
-            }
             IRExprKind::Unit => {
                 // nothing to push for void; use 0 by convention if a value is required, handled by caller
             }
@@ -210,11 +192,12 @@ impl WasmGenerator {
                     if needs_env {
                         // Generate environment struct as first argument
                         let metadata = self.func_metadata.get(name).unwrap();
-                        let env_type_idx = *self.env_struct_types.get(name)
+                        let (_closure_func_type_idx, _base_type_idx, concrete_type_idx) = *self.env_struct_types.get(name)
                             .expect("Function with captured vars should have env type");
 
-                        // Field 0: placeholder int32 (for future function pointer)
-                        func.instruction(&Instruction::I32Const(0));
+                        // Field 0: function pointer (ref.func for the closure implementation)
+                        let func_idx = self.func_indices[name];
+                        func.instruction(&Instruction::RefFunc(func_idx));
 
                         // Fields 1..N: captured variable values
                         for captured in &metadata.captured_vars {
@@ -225,16 +208,16 @@ impl WasmGenerator {
                                 func.instruction(&Instruction::LocalGet(local_idx));
                             } else if let Some(caller_captured) = ctx.get_captured(&captured.name) {
                                 // Variable is in our captured vars (we also capture it transitively)
-                                // Load it from our environment parameter
-                                let env_idx = ctx.env_param_index()
-                                    .expect("Function with captured vars should have env param");
-                                let env_type_idx = ctx.env_struct_type_idx()
-                                    .expect("Function with captured vars should have env type");
+                                // Use the downcasted typed environment to access concrete fields
+                                let typed_env_local = ctx.typed_env_local()
+                                    .expect("Function with captured vars should have typed env local");
+                                let concrete_env_type = ctx.concrete_env_type_idx()
+                                    .expect("Function with captured vars should have concrete env type");
 
-                                // Load environment and extract the field
-                                func.instruction(&Instruction::LocalGet(env_idx));
+                                // Load downcasted environment and extract the field
+                                func.instruction(&Instruction::LocalGet(typed_env_local));
                                 func.instruction(&Instruction::StructGet {
-                                    struct_type_index: env_type_idx,
+                                    struct_type_index: concrete_env_type,
                                     field_index: caller_captured.field_index,
                                 });
                             } else {
@@ -244,8 +227,8 @@ impl WasmGenerator {
                             }
                         }
 
-                        // Create the environment struct
-                        func.instruction(&Instruction::StructNew(env_type_idx));
+                        // Create the environment struct (use concrete type)
+                        func.instruction(&Instruction::StructNew(concrete_type_idx));
                     }
 
                     // Generate regular arguments
@@ -257,14 +240,21 @@ impl WasmGenerator {
                     func.instruction(&Instruction::Call(func_idx));
                 } else {
                     // Function stored in a variable - could be a function with environment or bare function ref
-                    // Check if this function has environment
-                    let has_env = if let IRExprKind::Identifier(name) = &callee.kind {
-                        self.env_struct_types.contains_key(name)
+                    // Check if this function signature corresponds to a closure
+                    let closure_info = if let Type::Function { params, return_type } = &callee.ty {
+                        let param_types: Vec<Type> = params
+                            .iter()
+                            .filter_map(|p| match &p.kind {
+                                crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
+                                crate::types::ParamKind::VarArgs => None,
+                            })
+                            .collect();
+                        self.get_closure_info_for_signature(&param_types, return_type)
                     } else {
-                        false
+                        None
                     };
 
-                    if has_env {
+                    if let Some((closure_func_type_idx, base_type_idx)) = closure_info {
                         // Function with environment call: call_ref expects [env, args..., funcptr]
                         //
                         // 1. Load environment (the struct itself)
@@ -277,49 +267,15 @@ impl WasmGenerator {
 
                         // 3. Load struct again and extract function pointer from field 0
                         self.gen_expr(func, ctx, callee);
-                        if let IRExprKind::Identifier(name) = &callee.kind {
-                            let env_struct_type_idx = *self.env_struct_types.get(name).unwrap();
-                            func.instruction(&Instruction::StructGet {
-                                struct_type_index: env_struct_type_idx,
-                                field_index: 0,
-                            });
-                        }
+                        // Use base type to extract field 0 (function pointer is in base type)
+                        func.instruction(&Instruction::StructGet {
+                            struct_type_index: base_type_idx,
+                            field_index: 0,
+                        });
 
                         // 4. Now stack is: [env, args..., funcptr] - call it!
-                        // For functions with environment, we need the WASM function type that includes the environment parameter
-                        // This is NOT the IR function type - it's the actual WASM type with env as first param
-                        if let IRExprKind::Identifier(name) = &callee.kind {
-                            // The closure function was declared with environment as first param in PASS 2
-                            // We need to find that type index. For now, we can get it by looking up
-                            // the function in func_indices and getting its type.
-                            // But actually, the funcref on the stack already has the right type.
-                            // call_ref will use the type from the funcref, but we still need to specify
-                            // the expected type for validation.
-
-                            // The issue: we created the bare function type (type 6) but the actual
-                            // WASM function has the closure type (type 8). The funcref in field 0
-                            // is typed as (ref 6), but it should be (ref 8).
-
-                            // For now, let me get the function index and look up its actual type
-                            // Actually, we can't easily get the type index of the closure function here.
-                            // The real fix is to make sure field 0 of the struct has the right type (ref 8, not ref 6).
-
-                            // Let me use a workaround: find the closure function type
-                            let func_idx = self.func_indices.get(name).copied();
-                            // We need to compute what type 8 is. It's the bare function params + env param
-
-                            if let Type::Function { params, return_type } = &callee.ty {
-                                let param_types: Vec<Type> = params
-                                    .iter()
-                                    .filter_map(|p| match &p.kind {
-                                        crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
-                                        crate::types::ParamKind::VarArgs => None,
-                                    })
-                                    .collect();
-                                let type_idx = self.get_or_create_func_type_index(&param_types, return_type);
-                                func.instruction(&Instruction::CallRef(type_idx));
-                            }
-                        }
+                        // Use the closure function type which includes the environment parameter as the first param
+                        func.instruction(&Instruction::CallRef(closure_func_type_idx));
                     } else {
                         // Bare function variable (no environment)
                         // Generate arguments first
@@ -379,6 +335,25 @@ impl WasmGenerator {
                 }
             }
         }
+    }
+
+    pub(crate) fn gen_number(&mut self, func: &mut Function, ctx: &LocalContext, ty: &Type, numeric_string: &String) {
+        match &ty {
+            &Type::Int => {
+                let num = numeric_string.parse::<i32>().unwrap();
+                func.instruction(&Instruction::I32Const(num))
+            }
+        ,
+            &Type::Float => {
+                let ie_num = Ieee32::from(numeric_string.parse::<f32>().unwrap());
+                func.instruction(&Instruction::F32Const(ie_num))
+            }
+            &Type::Double => {
+                let ie_num = Ieee64::from(numeric_string.parse::<f64>().unwrap());
+                func.instruction(&Instruction::F64Const(ie_num))
+            }
+            _ => panic!("Type checker should prevent non-numeric expressions"),
+        };
     }
 
 

@@ -379,7 +379,7 @@ impl CapturedVarsPass {
                 func_metadata.captured_vars = captured_vars;
 
                 // Functions with captured variables need environment parameter
-                // func_metadata.is_closure = !func_metadata.captured_vars.is_empty();
+                func_metadata.is_closure = !func_metadata.captured_vars.is_empty();
             }
         }
 
@@ -503,12 +503,6 @@ impl CapturedVarsPass {
             IRExprKind::VectorLiteral(exprs) => {
                 for e in exprs {
                     self.collect_references_from_expr(e, refs);
-                }
-            }
-            IRExprKind::ClosureCreate { captured_vars, .. } => {
-                // Add captured variables to references
-                for var_name in captured_vars {
-                    refs.insert(var_name.clone());
                 }
             }
             IRExprKind::Number(_) | IRExprKind::XString(_) | IRExprKind::VarArgs | IRExprKind::Unit => {}

@@ -39,8 +39,9 @@ impl WasmGenerator {
             mutable: true,
         };
 
-        let type_idx = self.types.len() as u32;
+        let type_idx = self.type_count;
         self.types.ty().struct_(vec![field]);
+        self.type_count += 1;
 
         // Cache it
         self.ref_cell_types.insert(value_type.clone(), type_idx);

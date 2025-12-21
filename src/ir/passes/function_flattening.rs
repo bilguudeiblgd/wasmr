@@ -46,9 +46,8 @@ impl FunctionFlatteningPass {
                     let func = stmts.remove(i);
                     functions.push(func);
 
-                    // NOTE: For now, we don't create ClosureCreate expressions
-                    // Functions with captured variables just get env as first parameter
-                    // TODO: Add ClosureCreate support for returned functions later
+                    // Functions with captured variables get env as first parameter
+                    // Closure detection is based on whether the function returns a function type
 
                     // Don't increment i (removed element, so next is at same index)
                 } else {

@@ -1,5 +1,5 @@
 use rty_compiler::ast::Stmt;
-use rty_compiler::ir::{IRStmt, TypeResolver, IR};
+use rty_compiler::ir::{IRPassManager, IRProgram, IRStmt, TypeResolver, IR};
 use rty_compiler::lexer::Lexer;
 use rty_compiler::parser::Parser;
 
@@ -8,6 +8,18 @@ fn parse_program(s: &str) -> Vec<Stmt> {
     let tokens = lexer.lex(&s.to_string());
     let mut parser = Parser::new(tokens);
     parser.parse_program().expect("parse failed")
+}
+
+fn parse_and_lower_with_passes(s: &str) -> IRProgram {
+    let prog = parse_program(s);
+    let mut resolver = TypeResolver::new();
+    let mut ir_program = IR::from_ast(prog, &mut resolver).expect("IR lowering failed");
+
+    // Run IR passes to flatten functions and collect metadata
+    let mut pass_manager = IRPassManager::default_pipeline();
+    pass_manager.run(&mut ir_program).expect("IR passes failed");
+
+    ir_program
 }
 
 #[test]
@@ -37,10 +49,8 @@ fn test_transitive_capture_propagation() {
         result: int <- f()
     "#;
 
-    // Parse and resolve types
-    let prog = parse_program(source);
-    let mut resolver = TypeResolver::new();
-    let ir_program = IR::from_ast(prog, &mut resolver).expect("IR lowering failed");
+    // Parse, resolve types, and run IR passes
+    let ir_program = parse_and_lower_with_passes(source);
 
     // Find function g in the IR
     let g_func = ir_program.functions.iter()
@@ -105,9 +115,7 @@ fn test_direct_vs_transitive_captures() {
         result: int <- outer()
     "#;
 
-    let prog = parse_program(source);
-    let mut resolver = TypeResolver::new();
-    let ir_program = IR::from_ast(prog, &mut resolver).expect("IR lowering failed");
+    let ir_program = parse_and_lower_with_passes(source);
 
     // Find middle function
     let middle_func = ir_program.functions.iter()

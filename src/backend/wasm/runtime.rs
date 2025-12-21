@@ -28,10 +28,11 @@ impl WasmGenerator {
     /// Prints a string to stdout using WASI fd_write
     fn gen_print_string_helper(&mut self) {
         // Function signature: (ptr: i32, len: i32) -> void
-        let type_idx = self.types.len();
+        let type_idx = self.type_count;
         self.types
             .ty()
             .function(vec![ValType::I32, ValType::I32], vec![]);
+        self.type_count += 1;
 
         self.functions.function(type_idx as u32);
         let func_idx = self.func_count;
@@ -84,10 +85,11 @@ impl WasmGenerator {
     /// Converts an integer to a string in memory and returns pointer + length
     fn gen_int_to_string_helper(&mut self) {
         // Function signature: (num: i32) -> (ptr: i32, len: i32)
-        let type_idx = self.types.len();
+        let type_idx = self.type_count;
         self.types
             .ty()
             .function(vec![ValType::I32], vec![ValType::I32, ValType::I32]);
+        self.type_count += 1;
 
         self.functions.function(type_idx as u32);
         let func_idx = self.func_count;
@@ -236,7 +238,7 @@ impl WasmGenerator {
             nullable: false,
             heap_type: HeapType::Concrete(int_vec_type),
         });
-        let type_index = self.types.len() as u32;
+        let type_index = self.type_count;
         {
             let ty = self.types.ty();
             ty.function(
@@ -247,6 +249,7 @@ impl WasmGenerator {
                 vec![vector_val_type],
             );
         }
+        self.type_count += 1;
 
         // Register the function
         self.functions.function(type_index);
@@ -335,7 +338,7 @@ impl WasmGenerator {
 
    
     fn gen_vector_mul_builtin(&mut self, int_vec_type: u32) {
-        let type_index = self.types.len() as u32;
+        let type_index = self.type_count;
         {
             let ty = self.types.ty();
             ty.function(

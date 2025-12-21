@@ -6,6 +6,6 @@ make_adder <- function(x: double): double -> double {
     return(inner)
 }
 
-add5 <- make_adder(5.0)
-result: int <- add5(3.0)
+add5: double -> double <- make_adder(5.0)
+result: double <- add5(3.0)
 print(result)
