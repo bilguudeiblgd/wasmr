@@ -29,8 +29,14 @@ impl WasmGenerator {
         captured_vars: &[CapturedVarInfo],
         _func_type_idx: u32, // Reserved for future use
     ) -> u32 {
-        // Check cache - reuse existing env type if already created
-        if let Some(&type_idx) = self.env_struct_types.get(func_name) {
+        // Generate a canonical key based on the structure, not the function name
+        // This allows reusing the same type for different functions with identical environments
+        let struct_key = self.make_env_struct_key(captured_vars);
+
+        // Check if we already have this exact struct type
+        if let Some(&type_idx) = self.env_struct_type_cache.get(&struct_key) {
+            // Cache the mapping for this function name too
+            self.env_struct_types.insert(func_name.to_string(), type_idx);
             return type_idx;
         }
 
@@ -64,10 +70,22 @@ impl WasmGenerator {
         let type_idx = self.types.len() as u32;
         self.types.ty().struct_(fields);
 
-        // Cache it
+        // Cache by structure key (for reuse)
+        self.env_struct_type_cache.insert(struct_key, type_idx);
+        // Cache by function name (for lookup)
         self.env_struct_types.insert(func_name.to_string(), type_idx);
 
         type_idx
+    }
+
+    /// Generate a canonical key for an environment struct based on its field types
+    /// This allows different functions with the same environment structure to share types
+    fn make_env_struct_key(&mut self, captured_vars: &[CapturedVarInfo]) -> String {
+        let mut key = String::from("env:");
+        for captured in captured_vars {
+            key.push_str(&format!("{:?}:{},", captured.ty, captured.is_mutable));
+        }
+        key
     }
 
     /// Get the ValType for an environment struct reference

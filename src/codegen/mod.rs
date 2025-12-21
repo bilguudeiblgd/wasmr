@@ -45,7 +45,9 @@ pub struct WasmGenerator {
     // Map function signatures to type indices for typed funcrefs
     func_type_indices: HashMap<FunctionSignature, u32>,
     // Map function name to environment struct type index (for functions with captured vars)
-    env_struct_types: HashMap<String, u32>,
+    pub(crate) env_struct_types: HashMap<String, u32>,
+    // Map environment structure to type index (for deduplicating identical env types)
+    pub(crate) env_struct_type_cache: HashMap<String, u32>,
     // Map function name to metadata (for accessing captured variables in gen_call)
     func_metadata: HashMap<String, Box<FunctionMetadata>>,
     // Map type to reference cell struct type index (for super-assignment)
@@ -72,6 +74,7 @@ impl WasmGenerator {
             array_type_anyref: None,
             func_type_indices: HashMap::new(),
             env_struct_types: HashMap::new(),
+            env_struct_type_cache: HashMap::new(),
             func_metadata: HashMap::new(),
             ref_cell_types: HashMap::new(),
         }

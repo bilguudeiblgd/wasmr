@@ -1,6 +1,6 @@
 use crate::ast::{Param, ParamKind, Type};
 use crate::ir::{IRExpr, IRExprKind, IRProgram, IRStmt, Pass, PassError};
-use crate::ir::types::{CapturedVarInfo, FunctionMetadata};
+use crate::ir::types::{CapturedVarInfo, FunctionMetadata, LocalVarInfo};
 use std::collections::{HashMap, HashSet};
 
 /// Captured variables analysis pass
@@ -26,12 +26,17 @@ impl CapturedVarsPass {
     }
 
     /// Find captured variables for a function, tracking which are super-assigned
+    /// Returns: (captured_vars, super_assigned_vars, transitively_needed_vars)
+    ///
+    /// The transitively_needed_vars includes both:
+    /// - Variables this function directly references
+    /// - Variables that nested functions need (to be passed through)
     fn find_captured_variables(
         &self,
         params: &[Param],
         body: &[IRStmt],
         parent_vars: &HashMap<String, Type>,
-    ) -> Result<(Vec<CapturedVarInfo>, HashSet<String>), PassError> {
+    ) -> Result<(Vec<CapturedVarInfo>, HashSet<String>, HashSet<String>), PassError> {
         // Track local variables (params + local declarations)
         let mut local_vars = HashSet::new();
         for param in params {
@@ -50,14 +55,26 @@ impl CapturedVarsPass {
             &mut super_assigned_vars
         );
 
-        // Find captures: referenced but not local, and exists in parent
+        // NEW: Collect variables needed by nested functions (transitive captures)
+        let nested_function_needs = self.collect_nested_function_needs(body);
+
+        // Combine direct references with transitive needs from nested functions
+        let mut transitively_needed = referenced_vars.clone();
+        for var_name in &nested_function_needs {
+            // Only include if not a local variable (locals don't need to be captured)
+            if !local_vars.contains(var_name) {
+                transitively_needed.insert(var_name.clone());
+            }
+        }
+
+        // Find captures: transitively needed, not local, and exists in parent
         let mut captured_info = Vec::new();
         let mut field_index = 1u32;  // Field 0 is function code pointer
 
-        for var_name in &referenced_vars {
+        for var_name in &transitively_needed {
             if !local_vars.contains(var_name) {
                 if let Some(var_type) = parent_vars.get(var_name) {
-                    // This is a captured variable
+                    // This is a captured variable (either direct or transitive)
                     let is_mutable = super_assigned_vars.contains(var_name);
 
                     captured_info.push(CapturedVarInfo {
@@ -71,8 +88,8 @@ impl CapturedVarsPass {
             }
         }
 
-        // Return captured vars for this function AND super-assigned vars for parent marking
-        Ok((captured_info, super_assigned_vars))
+        // Return captured vars, super-assigned vars, and transitive needs
+        Ok((captured_info, super_assigned_vars, transitively_needed))
     }
 
     /// Check if a function is returned from the given statements
@@ -119,7 +136,126 @@ impl CapturedVarsPass {
         }
     }
 
+    /// Collect all variables needed by nested functions (for transitive capture propagation)
+    ///
+    /// This method looks at all nested function definitions and collects the variables
+    /// they capture. These variables need to be passed through this function's environment
+    /// even if this function doesn't directly use them.
+    ///
+    /// NOTE: This assumes nested functions have already been analyzed and have their
+    /// captured_vars populated in metadata. The analysis must be done bottom-up.
+    fn collect_nested_function_needs(&self, stmts: &[IRStmt]) -> HashSet<String> {
+        let mut needs = HashSet::new();
+
+        for stmt in stmts {
+            match stmt {
+                IRStmt::FunctionDef { metadata, body, .. } => {
+                    // Collect what this nested function captures
+                    if let Some(func_metadata) = metadata {
+                        for captured in &func_metadata.captured_vars {
+                            needs.insert(captured.name.clone());
+                        }
+                    }
+
+                    // Recursively collect from deeper nested functions
+                    let deeper_needs = self.collect_nested_function_needs(body);
+                    needs.extend(deeper_needs);
+                }
+                IRStmt::If { then_branch, else_branch, .. } => {
+                    needs.extend(self.collect_nested_function_needs(then_branch));
+                    if let Some(else_stmts) = else_branch {
+                        needs.extend(self.collect_nested_function_needs(else_stmts));
+                    }
+                }
+                IRStmt::For { body, .. } | IRStmt::While { body, .. } => {
+                    needs.extend(self.collect_nested_function_needs(body));
+                }
+                IRStmt::Block(stmts) => {
+                    needs.extend(self.collect_nested_function_needs(stmts));
+                }
+                _ => {}
+            }
+        }
+
+        needs
+    }
+
+    /// Propagate mutability information from nested functions upward
+    ///
+    /// If a nested function has a mutable captured variable (due to super-assignment),
+    /// we need to mark that same variable in the parent function:
+    /// - If it's in parent's local_vars -> mark need_reference = true
+    /// - If it's in parent's captured_vars -> mark is_mutable = true
+    ///
+    /// This ensures the reference chain is maintained through all levels.
+    fn propagate_mutability_from_nested_functions(
+        &self,
+        stmts: &[IRStmt],
+        local_vars: &mut Vec<LocalVarInfo>,
+        captured_vars: &mut Vec<CapturedVarInfo>,
+    ) -> Result<(), PassError> {
+        for stmt in stmts {
+            match stmt {
+                IRStmt::FunctionDef { metadata, body, .. } => {
+                    // Check this nested function's captured variables
+                    if let Some(func_metadata) = metadata {
+                        for captured in &func_metadata.captured_vars {
+                            if captured.is_mutable {
+                                // This variable is mutated in the nested function
+                                // Mark it in our scope accordingly
+
+                                // Check if it's in our local_vars (we define it)
+                                let mut found_in_locals = false;
+                                for local_var in local_vars.iter_mut() {
+                                    if local_var.name == captured.name {
+                                        local_var.need_reference = true;
+                                        found_in_locals = true;
+                                        break;
+                                    }
+                                }
+
+                                // If not in locals, check if it's in our captured_vars (we also capture it)
+                                if !found_in_locals {
+                                    for our_captured in captured_vars.iter_mut() {
+                                        if our_captured.name == captured.name {
+                                            our_captured.is_mutable = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Recursively check deeper nested functions
+                    self.propagate_mutability_from_nested_functions(body, local_vars, captured_vars)?;
+                }
+                IRStmt::If { then_branch, else_branch, .. } => {
+                    self.propagate_mutability_from_nested_functions(then_branch, local_vars, captured_vars)?;
+                    if let Some(else_stmts) = else_branch {
+                        self.propagate_mutability_from_nested_functions(else_stmts, local_vars, captured_vars)?;
+                    }
+                }
+                IRStmt::For { body, .. } | IRStmt::While { body, .. } => {
+                    self.propagate_mutability_from_nested_functions(body, local_vars, captured_vars)?;
+                }
+                IRStmt::Block(stmts) => {
+                    self.propagate_mutability_from_nested_functions(stmts, local_vars, captured_vars)?;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
     /// Recursively analyze nested functions and populate closure metadata
+    ///
+    /// This performs a BOTTOM-UP analysis:
+    /// 1. First, recursively analyze deeper nested functions
+    /// 2. Then, compute captures for current level functions (which can now see what nested functions need)
+    ///
+    /// This ensures transitive capture propagation works correctly.
     fn analyze_nested_functions(
         &mut self,
         stmts: &mut [IRStmt],
@@ -136,10 +272,14 @@ impl CapturedVarsPass {
             }
         }
 
-        // Second pass: analyze functions
-        for stmt in stmts {
+        // BOTTOM-UP ANALYSIS: Process in two phases
+
+        // Phase 1: Recursively analyze deeper nested functions FIRST
+        // This ensures nested functions have their captured_vars populated
+        // before we try to compute transitive captures for parent functions
+        for stmt in stmts.iter_mut() {
             match stmt {
-                IRStmt::FunctionDef { name: func_name, params, body, metadata, .. } => {
+                IRStmt::FunctionDef { params, body, metadata, .. } => {
                     // Ensure metadata exists
                     let func_metadata = metadata.as_mut()
                         .ok_or_else(|| PassError::PreconditionFailed {
@@ -153,31 +293,20 @@ impl CapturedVarsPass {
                         all_parent_vars.insert(local_var.name.clone(), local_var.ty.clone());
                     }
 
-                    // Analyze this function's captures
-                    let (captured_vars, super_assigned_vars) =
-                        self.find_captured_variables(params, body, &all_parent_vars)?;
-
-                    // Mark parent variables with need_reference if super-assigned
-                    for var_name in &super_assigned_vars {
-                        if let Some(local_var) = parent_metadata.local_vars
-                            .iter_mut()
-                            .find(|lv| lv.name == *var_name)
-                        {
-                            local_var.need_reference = true;
+                    // Add this function's own parameters and locals to the map for deeper nesting
+                    for param in params.iter() {
+                        if let ParamKind::Normal(ty) = &param.kind {
+                            all_parent_vars.insert(param.name.clone(), ty.clone());
                         }
                     }
+                    for local_var in &func_metadata.local_vars {
+                        all_parent_vars.insert(local_var.name.clone(), local_var.ty.clone());
+                    }
 
-                    // Populate this function's metadata
-                    func_metadata.captured_vars = captured_vars;
-
-                    // Functions with captured variables need environment parameter
-                    func_metadata.is_closure = !func_metadata.captured_vars.is_empty();
-
-                    // Recursively analyze deeper nesting
+                    // Recursively analyze deeper nested functions FIRST
                     self.analyze_nested_functions(body, &all_parent_vars, func_metadata)?;
                 }
-
-                // Recurse into control flow structures
+                // Also recurse into control flow structures
                 IRStmt::If { then_branch, else_branch, .. } => {
                     self.analyze_nested_functions(then_branch, parent_vars, parent_metadata)?;
                     if let Some(else_stmts) = else_branch {
@@ -191,6 +320,66 @@ impl CapturedVarsPass {
                     self.analyze_nested_functions(stmts, parent_vars, parent_metadata)?;
                 }
                 _ => {}
+            }
+        }
+
+        // Phase 2: Now compute captures for current level functions
+        // At this point, all nested functions have their captured_vars populated,
+        // so collect_nested_function_needs will work correctly
+        for stmt in stmts.iter_mut() {
+            if let IRStmt::FunctionDef { params, body, metadata, .. } = stmt {
+                let func_metadata = metadata.as_mut().unwrap();
+
+                // Build complete parent variable map
+                let mut all_parent_vars = parent_vars.clone();
+                for local_var in &parent_metadata.local_vars {
+                    all_parent_vars.insert(local_var.name.clone(), local_var.ty.clone());
+                }
+
+                // Compute this function's captures (including transitive captures)
+                let (mut captured_vars, super_assigned_vars, _transitive_needs) =
+                    self.find_captured_variables(params, body, &all_parent_vars)?;
+
+                // Mark variables that need references due to super-assignment
+                for var_name in &super_assigned_vars {
+                    // First check if the variable is in parent's local_vars (defined in parent)
+                    if let Some(local_var) = parent_metadata.local_vars
+                        .iter_mut()
+                        .find(|lv| lv.name == *var_name)
+                    {
+                        local_var.need_reference = true;
+                    }
+                    // If not in parent's locals, it must be captured from a higher scope
+                    // Mark it as mutable in this function's captured_vars so we receive/pass a reference
+                    else {
+                        for captured_var in &mut captured_vars {
+                            if captured_var.name == *var_name {
+                                captured_var.is_mutable = true;
+                            }
+                        }
+
+                        // Also mark it in parent's captured_vars if parent also captures it
+                        for parent_captured in &mut parent_metadata.captured_vars {
+                            if parent_captured.name == *var_name {
+                                parent_captured.is_mutable = true;
+                            }
+                        }
+                    }
+                }
+
+                // NEW: Propagate mutability from nested functions
+                // If a nested function has a mutable captured variable, we need to mark it in our scope
+                self.propagate_mutability_from_nested_functions(
+                    body,
+                    &mut func_metadata.local_vars,
+                    &mut captured_vars,
+                )?;
+
+                // Populate this function's metadata
+                func_metadata.captured_vars = captured_vars;
+
+                // Functions with captured variables need environment parameter
+                // func_metadata.is_closure = !func_metadata.captured_vars.is_empty();
             }
         }
 
@@ -347,6 +536,15 @@ impl Pass for CapturedVarsPass {
 
             // Recursively analyze nested functions
             self.analyze_nested_functions(body, &parent_vars, metadata)?;
+
+            // IMPORTANT: After analyzing nested functions, propagate mutability to main's locals
+            // If nested functions super-assign variables, mark them in main function's metadata
+            let mut empty_captured_vars = Vec::new(); // Main doesn't capture anything (it's the top level)
+            self.propagate_mutability_from_nested_functions(
+                body,
+                &mut metadata.local_vars,
+                &mut empty_captured_vars,
+            )?;
         }
 
         Ok(())

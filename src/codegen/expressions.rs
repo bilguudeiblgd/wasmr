@@ -36,9 +36,24 @@ impl WasmGenerator {
 
         // Fields 1..N: Push captured variable values
         for var_name in captured_vars {
-            // Check if it's a local or another captured variable
+            // Check if it's in local variables OR in our captured variables (transitive)
             if let Some(local_idx) = ctx.get_local(var_name) {
+                // Variable is in our local variables
                 func.instruction(&Instruction::LocalGet(local_idx));
+            } else if let Some(captured_info) = ctx.get_captured(var_name) {
+                // Variable is in our captured vars (we also capture it transitively)
+                // Load it from our environment parameter
+                let env_idx = ctx.env_param_index()
+                    .expect("Function with captured vars should have env param");
+                let env_type_idx = ctx.env_struct_type_idx()
+                    .expect("Function with captured vars should have env type");
+
+                // Load environment and extract the field
+                func.instruction(&Instruction::LocalGet(env_idx));
+                func.instruction(&Instruction::StructGet {
+                    struct_type_index: env_type_idx,
+                    field_index: captured_info.field_index,
+                });
             } else {
                 // Unknown variable - push 0 as fallback
                 eprintln!("Warning: captured variable {} not found in context", var_name);
@@ -73,6 +88,16 @@ impl WasmGenerator {
                         struct_type_index: env_struct_index,
                         field_index: captured_info.field_index
                     });
+
+                    // If it's a mutable variable (super-assigned), it's stored as a ref cell
+                    // Extract the actual value from the ref cell
+                    if captured_info.is_mutable {
+                        let ref_cell_type_idx = self.get_or_create_ref_cell_type(&captured_info.ty);
+                        func.instruction(&Instruction::StructGet {
+                            struct_type_index: ref_cell_type_idx,
+                            field_index: 0,  // Ref cell has the value at field 0
+                        });
+                    }
                 }
                 // Check if this is a local variable that holds a function with environment
                 else if ctx.has_local(name) && self.env_struct_types.contains_key(name) {
@@ -194,8 +219,24 @@ impl WasmGenerator {
                         // Fields 1..N: captured variable values
                         for captured in &metadata.captured_vars {
                             // Get the captured variable from current context
+                            // It can be in either locals OR in our own captured vars (transitive)
                             if let Some(local_idx) = ctx.get_local(&captured.name) {
+                                // Variable is in our local variables
                                 func.instruction(&Instruction::LocalGet(local_idx));
+                            } else if let Some(caller_captured) = ctx.get_captured(&captured.name) {
+                                // Variable is in our captured vars (we also capture it transitively)
+                                // Load it from our environment parameter
+                                let env_idx = ctx.env_param_index()
+                                    .expect("Function with captured vars should have env param");
+                                let env_type_idx = ctx.env_struct_type_idx()
+                                    .expect("Function with captured vars should have env type");
+
+                                // Load environment and extract the field
+                                func.instruction(&Instruction::LocalGet(env_idx));
+                                func.instruction(&Instruction::StructGet {
+                                    struct_type_index: env_type_idx,
+                                    field_index: caller_captured.field_index,
+                                });
                             } else {
                                 // Variable not found - this shouldn't happen
                                 eprintln!("Warning: captured variable {} not found in caller context", captured.name);
