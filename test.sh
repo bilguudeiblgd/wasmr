@@ -11,6 +11,21 @@ PASSED=0
 FAILED=0
 SKIPPED=0
 
+# Function to normalize floating point output
+# Converts "2.50" to "2.5", handles both single numbers and multi-line output
+normalize_floats() {
+    local input="$1"
+    echo "$input" | awk '{
+        # Check if line is a number (int or float)
+        if ($0 ~ /^-?[0-9]+(\.[0-9]+)?$/) {
+            # Convert to float and print with minimal decimals
+            printf "%.15g\n", $0
+        } else {
+            print $0
+        }
+    }'
+}
+
 echo "========================================="
 echo "  Rty Compiler Test Suite"
 echo "========================================="
@@ -67,14 +82,19 @@ for plain_r_file in data_R/*.R; do
         continue
     fi
 
-    # Compare outputs
-    if [ "$r_output" = "$wasm_output" ]; then
+    # Normalize floating point numbers in both outputs
+    r_output_normalized=$(normalize_floats "$r_output")
+    wasm_output_normalized=$(normalize_floats "$wasm_output")
+
+    # Compare normalized outputs
+    if [ "$r_output_normalized" = "$wasm_output_normalized" ]; then
         echo -e "${GREEN}[PASS]${NC} $basename"
         ((PASSED++))
     else
         echo -e "${RED}[FAIL]${NC} $basename"
         echo "  Expected (R):  $r_output"
         echo "  Got (WASM):    $wasm_output"
+        echo "  (Normalized comparison failed)"
         ((FAILED++))
     fi
 done

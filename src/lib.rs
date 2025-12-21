@@ -17,3 +17,4 @@ pub mod parser;
 pub mod ir;
 pub mod backend;
 pub mod driver;
+pub mod type_eraser;

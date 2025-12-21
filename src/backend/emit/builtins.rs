@@ -19,7 +19,7 @@ impl WasmGenerator {
     ) {
         match builtin {
             BuiltinKind::Print => {
-                // Only support printing integers for now
+                // Support printing int, float, and double
                 if args.len() != 1 {
                     return;
                 }
@@ -27,12 +27,29 @@ impl WasmGenerator {
                 // Evaluate the argument (puts value on stack)
                 self.gen_expr(func, ctx, &args[0]);
 
-                // Call int_to_string helper: (num: i32) -> (ptr: i32, len: i32)
-                let int_to_string_idx = self
-                    .func_indices
-                    .get("__int_to_string")
-                    .expect("__int_to_string helper not found");
-                func.instruction(&Instruction::Call(*int_to_string_idx));
+                // Call appropriate to_string helper based on type
+                use crate::types::Type;
+                let to_string_idx = match &args[0].ty {
+                    Type::Int => self
+                        .func_indices
+                        .get("__int_to_string")
+                        .expect("__int_to_string helper not found"),
+                    Type::Float => self
+                        .func_indices
+                        .get("__float_to_string")
+                        .expect("__float_to_string helper not found"),
+                    Type::Double => self
+                        .func_indices
+                        .get("__double_to_string")
+                        .expect("__double_to_string helper not found"),
+                    _ => {
+                        // Unsupported type - just drop and return
+                        func.instruction(&Instruction::Drop);
+                        return;
+                    }
+                };
+
+                func.instruction(&Instruction::Call(*to_string_idx));
 
                 // Stack now has: [ptr, len]
                 // Call print_string helper: (ptr: i32, len: i32) -> void

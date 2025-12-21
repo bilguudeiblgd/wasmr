@@ -728,11 +728,12 @@ impl<'a> LowerCtx<'a> {
                     });
                 }
 
-                if args[0].ty != Type::Int {
+                // Accept Int, Float, or Double for printing
+                if !matches!(args[0].ty, Type::Int | Type::Float | Type::Double) {
                     return Err(TypeError::TypeMismatch {
                         expected: Type::Int,
                         found: args[0].ty.clone(),
-                        context: format!("print argument"),
+                        context: format!("print argument (expected int, float, or double)"),
                     });
                 }
 
