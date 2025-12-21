@@ -1,4 +1,5 @@
-use crate::ast::{BinaryOp, Param, Type};
+use crate::ast::BinaryOp;
+use crate::types::{Param, Type};
 
 /// Top-level IR representation of a program
 ///

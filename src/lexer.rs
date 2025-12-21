@@ -1,4 +1,4 @@
-use crate::is_builtin_type_name;
+use crate::types::is_builtin_type_name;
 
 pub struct Lexer {}
 

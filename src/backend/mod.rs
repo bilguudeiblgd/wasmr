@@ -1,20 +1,18 @@
-mod type_mapping;
-mod local_context;
-mod wasi;
-mod binary_ops;
-mod expressions;
-mod builtins;
-mod statements;
-mod function_env;
-mod ref_cell;
+// WASM-specific utilities
+mod wasm;
+
+// Code emission
+mod emit;
+
+// Core backend components
+mod context;
 pub mod io;
-pub mod codegen_builtins;
 
-// Re-export public API
-pub use io::{compile_and_write, compile_and_write_ir, compile_to_wasm, compile_to_wasm_ir, wasm_to_wat, write_wasm_file, write_wat_file};
+// Re-export public API (pure code generation functions only)
+pub use io::{compile_to_wasm, compile_to_wasm_ir};
 
-use crate::ast::Type;
-use local_context::LocalContext;
+use crate::types::Type;
+use context::LocalContext;
 use crate::ir::{FunctionMetadata, IRProgram, IRStmt as Stmt};
 use std::collections::HashMap;
 use wasm_encoder::{CodeSection, DataSection, ExportKind, ExportSection, FieldType, Function, FunctionSection, ImportSection, Instruction, MemorySection, Module, RefType, StorageType, StructType, TypeSection, ValType};
@@ -144,8 +142,8 @@ impl WasmGenerator {
                     // First, get the function type index for the bare function (without env)
                     let bare_param_types: Vec<Type> = params.iter()
                         .filter_map(|p| match &p.kind {
-                            crate::ast::ParamKind::Normal(ty) => Some(ty.clone()),
-                            crate::ast::ParamKind::VarArgs => None,
+                            crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
+                            crate::types::ParamKind::VarArgs => None,
                         })
                         .collect();
                     let bare_func_type_idx = self.get_or_create_func_type_index(&bare_param_types, return_type);

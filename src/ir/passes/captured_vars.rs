@@ -1,4 +1,4 @@
-use crate::ast::{Param, ParamKind, Type};
+use crate::types::{Param, ParamKind, Type};
 use crate::ir::{IRExpr, IRExprKind, IRProgram, IRStmt, Pass, PassError};
 use crate::ir::types::{CapturedVarInfo, FunctionMetadata, LocalVarInfo};
 use std::collections::{HashMap, HashSet};

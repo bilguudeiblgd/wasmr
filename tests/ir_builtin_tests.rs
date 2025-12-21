@@ -1,4 +1,5 @@
-use rty_compiler::ast::{BinaryOp, Expr, Param, ParamKind, Stmt, Type};
+use rty_compiler::ast::{BinaryOp, Expr, Stmt};
+use rty_compiler::types::{Param, ParamKind, Type};
 use rty_compiler::ir::{BuiltinKind, IRExprKind, IRProgram, IRStmt, TypeError, TypeResolver, IR};
 use rty_compiler::lexer::{Lexer, Token};
 use rty_compiler::parser::Parser;

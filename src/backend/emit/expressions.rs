@@ -1,8 +1,8 @@
-use crate::ast::Type;
+use crate::types::Type;
 use crate::ir::{IRExpr, IRExprKind};
 use wasm_encoder::{Function, HeapType, Instruction};
 
-use super::{local_context::LocalContext, WasmGenerator};
+use super::super::{context::LocalContext, WasmGenerator};
 
 impl WasmGenerator {
     /// Generate function value with environment: allocate environment struct with captured variables
@@ -312,8 +312,8 @@ impl WasmGenerator {
                                 let param_types: Vec<Type> = params
                                     .iter()
                                     .filter_map(|p| match &p.kind {
-                                        crate::ast::ParamKind::Normal(ty) => Some(ty.clone()),
-                                        crate::ast::ParamKind::VarArgs => None,
+                                        crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
+                                        crate::types::ParamKind::VarArgs => None,
                                     })
                                     .collect();
                                 let type_idx = self.get_or_create_func_type_index(&param_types, return_type);
@@ -335,8 +335,8 @@ impl WasmGenerator {
                             let param_types: Vec<Type> = params
                                 .iter()
                                 .filter_map(|p| match &p.kind {
-                                    crate::ast::ParamKind::Normal(ty) => Some(ty.clone()),
-                                    crate::ast::ParamKind::VarArgs => None,
+                                    crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
+                                    crate::types::ParamKind::VarArgs => None,
                                 })
                                 .collect();
                             let type_idx = self.get_or_create_func_type_index(&param_types, return_type);
@@ -368,8 +368,8 @@ impl WasmGenerator {
                     let param_types: Vec<Type> = params
                         .iter()
                         .filter_map(|p| match &p.kind {
-                            crate::ast::ParamKind::Normal(ty) => Some(ty.clone()),
-                            crate::ast::ParamKind::VarArgs => None,
+                            crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
+                            crate::types::ParamKind::VarArgs => None,
                         })
                         .collect();
                     let type_idx = self.get_or_create_func_type_index(&param_types, return_type);

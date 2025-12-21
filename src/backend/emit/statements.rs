@@ -1,7 +1,7 @@
 use crate::ir::{IRStmt as Stmt};
 use wasm_encoder::{BlockType, Function, Instruction};
 
-use super::{local_context::LocalContext, WasmGenerator};
+use super::super::{context::LocalContext, WasmGenerator};
 
 impl WasmGenerator {
     pub(crate) fn gen_stmt(
@@ -15,7 +15,7 @@ impl WasmGenerator {
             Stmt::ExprStmt(e) => {
                 self.gen_expr(func, ctx, e);
                 // Only drop if the expression returns a value (not void)
-                if !matches!(e.ty, crate::ast::Type::Void) {
+                if !matches!(e.ty, crate::types::Type::Void) {
                     func.instruction(&Instruction::Drop);
                 }
             }
@@ -227,7 +227,7 @@ impl WasmGenerator {
                 self.gen_expr(func, ctx, value);
 
                 // Get array type index
-                use crate::ast::Type;
+                use crate::types::Type;
                 let elem_ty = match &target.ty {
                     Type::Vector(inner) => &**inner,
                     _ => panic!("Type checker should prevent non-vector indexing"),

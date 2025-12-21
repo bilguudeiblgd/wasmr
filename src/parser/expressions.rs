@@ -1,4 +1,5 @@
-use crate::ast::{BinaryOp, Expr, Param, ParamKind, Type};
+use crate::ast::{BinaryOp, Expr};
+use crate::types::{Param, ParamKind, Type};
 use crate::lexer::Token;
 
 use super::{ParseError, Parser};

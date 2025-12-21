@@ -1,7 +1,13 @@
+//! IR builtin call emission
+//!
+//! Handles code generation for built-in function calls from the IR,
+//! such as c(), print(), and list(). These are user-facing built-in
+//! functions that appear in the source code.
+
 use crate::ir::{BuiltinKind, IRExpr};
 use wasm_encoder::{BlockType, Function, HeapType, Instruction};
 
-use super::{local_context::LocalContext, WasmGenerator};
+use super::super::{context::LocalContext, WasmGenerator};
 
 impl WasmGenerator {
     pub(crate) fn compile_builtin_call(

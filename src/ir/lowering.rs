@@ -1,5 +1,6 @@
-use crate::ast::Type::Vector;
-use crate::ast::{BinaryOp, Expr as AstExpr, Expr, Param, ParamKind, Stmt as AstStmt, Stmt, Type};
+use crate::types::{Type, Param, ParamKind};
+use crate::types::Type::Vector;
+use crate::ast::{BinaryOp, Expr as AstExpr, Expr, Stmt as AstStmt, Stmt};
 use super::types::{BuiltinKind, IRExpr, IRExprKind, IRProgram, IRStmt, TyResult, TypeError};
 use super::type_resolver::{TypeResolver, FunctionCtx, BuiltinDescriptor};
 

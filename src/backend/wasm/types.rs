@@ -1,7 +1,7 @@
-use crate::ast::{Param, ParamKind, Type};
+use crate::types::{Param, ParamKind, Type};
 use wasm_encoder::{HeapType, RefType, StorageType, ValType};
 
-use super::WasmGenerator;
+use super::super::WasmGenerator;
 
 impl WasmGenerator {
     pub(crate) fn wasm_valtype(&mut self, t: &Type) -> ValType {

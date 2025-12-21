@@ -1,4 +1,4 @@
-use crate::ast::{Param, ParamKind};
+use crate::types::{Param, ParamKind};
 use crate::ir::{CapturedVarInfo, FunctionMetadata};
 use std::collections::HashMap;
 

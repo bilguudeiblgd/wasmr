@@ -1,4 +1,5 @@
-use crate::ast::{Expr, Param, ParamKind, Stmt, Type};
+use crate::ast::{Expr, Stmt};
+use crate::types::{Param, ParamKind, Type};
 use crate::lexer::Token;
 
 use super::{ParseError, Parser};

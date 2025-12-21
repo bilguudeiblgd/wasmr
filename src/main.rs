@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-use rty_compiler::{codegen, lexer, parser::Parser};
+use rty_compiler::{driver, lexer, parser::Parser};
 
 fn main() {
     if let Err(e) = run() {
@@ -93,7 +93,7 @@ fn process_file(lexer: &lexer::Lexer, path: &Path) -> io::Result<PathBuf> {
         }
     };
 
-    // codegen + write
+    // driver + write
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
-    codegen::compile_and_write(program, stem)
+    driver::compile_and_write(program, stem)
 }

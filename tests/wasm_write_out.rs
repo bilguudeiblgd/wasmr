@@ -1,5 +1,5 @@
 use rty_compiler::ast::{Expr, Stmt};
-use rty_compiler::codegen::compile_and_write;
+use rty_compiler::driver::compile_and_write;
 
 #[test]
 fn writes_wasm_file_to_data_wasm_out() {

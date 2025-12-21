@@ -1,3 +1,5 @@
+use crate::types::{Type, Param, ParamKind};
+
 #[derive(Debug, Clone, PartialEq)]
 // #TODO: add more maths operations + functions.
 pub enum BinaryOp {
@@ -49,18 +51,6 @@ pub enum Expr {
 
 // -------------------- Statements & Program --------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ParamKind {
-    Normal(Type),
-    VarArgs,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Param {
-    pub name: String,
-    pub kind: ParamKind,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     ExprStmt(Expr),
@@ -92,26 +82,4 @@ pub enum Stmt {
     },
     Return(Option<Expr>),
     Block(Vec<Stmt>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Type {
-    Int,
-    Float,
-    Double,
-    String,
-    Vector(Box<Type>),
-    List,
-    Char,
-    Void,
-    Bool,
-    Any,
-    Reference(Box<Type>),
-    /// Internal type used to represent packed `...` values.
-    VarArgs,
-    /// Function type with signature: parameters and return type
-    Function {
-        params: Vec<Param>,
-        return_type: Box<Type>,
-    },
 }

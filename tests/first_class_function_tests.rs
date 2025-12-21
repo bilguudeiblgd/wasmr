@@ -2,7 +2,7 @@ use rty_compiler::ast::Stmt;
 use rty_compiler::ir::{TypeResolver, IR};
 use rty_compiler::lexer::Lexer;
 use rty_compiler::parser::Parser;
-use rty_compiler::codegen::compile_to_wasm;
+use rty_compiler::backend::compile_to_wasm;
 
 fn parse_and_lower(s: &str) -> Result<Vec<Stmt>, String> {
     let lexer = Lexer::new();

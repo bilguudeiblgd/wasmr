@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::ast::Type;
+use crate::types::Type;
 use super::types::{BuiltinKind, TyResult, TypeError};
 
 pub struct TypeResolver {

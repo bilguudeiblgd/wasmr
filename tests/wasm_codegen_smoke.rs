@@ -1,5 +1,5 @@
 use rty_compiler::ast::{Stmt, Expr, BinaryOp};
-use rty_compiler::codegen::compile_to_wasm;
+use rty_compiler::backend::compile_to_wasm;
 
 #[test]
 fn generates_non_empty_wasm() {

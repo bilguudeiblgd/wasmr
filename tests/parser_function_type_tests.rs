@@ -1,4 +1,5 @@
-use rty_compiler::ast::{Param, ParamKind, Stmt, Type};
+use rty_compiler::ast::Stmt;
+use rty_compiler::types::{Param, ParamKind, Type};
 use rty_compiler::lexer::Lexer;
 use rty_compiler::parser::Parser;
 

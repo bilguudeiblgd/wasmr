@@ -1,8 +1,9 @@
-use crate::ast::{BinaryOp, Type};
+use crate::ast::BinaryOp;
+use crate::types::Type;
 use crate::ir::{IRExpr, IRExprKind};
 use wasm_encoder::{Function, Instruction};
 
-use super::{local_context::LocalContext, WasmGenerator};
+use super::super::{context::LocalContext, WasmGenerator};
 
 impl WasmGenerator {
     pub(crate) fn gen_vector_binary_op(&mut self,

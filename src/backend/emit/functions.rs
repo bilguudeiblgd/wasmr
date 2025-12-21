@@ -13,7 +13,7 @@
 use crate::ir::CapturedVarInfo;
 use wasm_encoder::{FieldType, HeapType, RefType, StorageType, StructType, ValType};
 
-use super::WasmGenerator;
+use super::super::WasmGenerator;
 
 impl WasmGenerator {
     /// Get or create an environment struct type for a function with captured variables

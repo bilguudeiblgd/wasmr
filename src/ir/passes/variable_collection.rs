@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{Param, ParamKind, Type};
+use crate::types::{Param, ParamKind, Type};
 use crate::ir::{
     BuiltinKind, FunctionMetadata, IRExpr, IRExprKind, IRProgram, IRStmt, LocalVarInfo,
     VarArgsInfo, VarOrigin,

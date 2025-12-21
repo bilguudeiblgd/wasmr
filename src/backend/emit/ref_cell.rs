@@ -10,11 +10,11 @@
 /// Reference cell struct layout:
 /// - Single field: the variable value (mutable)
 
-use crate::ast::Type;
+use crate::types::Type;
 use wasm_encoder::{FieldType, HeapType, RefType, StorageType, ValType};
 use std::collections::HashMap;
 
-use super::WasmGenerator;
+use super::super::WasmGenerator;
 
 impl WasmGenerator {
     /// Get or create a reference cell struct type for a given value type

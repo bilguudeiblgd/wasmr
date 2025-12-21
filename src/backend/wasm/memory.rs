@@ -1,6 +1,6 @@
 use wasm_encoder::{EntityType, MemoryType, ValType};
 
-use super::WasmGenerator;
+use super::super::WasmGenerator;
 
 impl WasmGenerator {
     pub(crate) fn setup_wasi_imports(&mut self) {

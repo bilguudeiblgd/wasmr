@@ -1,5 +1,11 @@
+//! WASM runtime helper functions
+//!
+//! Generates runtime helper functions that support the compiled WASM code,
+//! such as __print_string, __int_to_string, and vector operation helpers.
+//! These are internal runtime functions, not directly callable from source code.
+
 use wasm_encoder::{BlockType, Function, HeapType, Instruction, RefType, StorageType, ValType};
-use crate::codegen::WasmGenerator;
+use super::super::WasmGenerator;
 
 impl WasmGenerator {
     /// Include built-in runtime functions that can be used throughout the compiled WASM
