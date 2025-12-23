@@ -62,6 +62,9 @@ impl Parser {
         if self.match_token(&Token::Equality) {
             return Some(BinaryOp::Equality)
         }
+        if self.match_token(&Token::NotEqual) {
+            return Some(BinaryOp::NotEqual)
+        }
         if self.match_token(&Token::Greater) {
             return Some(BinaryOp::Greater);
         }
@@ -120,7 +123,7 @@ impl Parser {
     }
 
     pub(crate) fn parse_call(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_primary()?;
+        let mut expr = self.parse_unary()?;
         loop {
             if self.match_token(&Token::LParen) {
                 let mut args = Vec::new();
@@ -150,6 +153,22 @@ impl Parser {
             }
         }
         Ok(expr)
+    }
+
+    pub(crate) fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        use crate::ast::UnaryOp;
+
+        // Check for unary operators
+        if self.match_token(&Token::LogicalNot) {
+            let operand = self.parse_unary()?; // Allow chaining: !!x
+            return Ok(Expr::Unary {
+                op: UnaryOp::LogicalNot,
+                operand: Box::new(operand),
+            });
+        }
+
+        // No unary operator, parse primary
+        self.parse_primary()
     }
 
     pub(crate) fn parse_primary(&mut self) -> Result<Expr, ParseError> {

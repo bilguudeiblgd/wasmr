@@ -485,6 +485,9 @@ impl CapturedVarsPass {
                 self.collect_references_from_expr(left, refs);
                 self.collect_references_from_expr(right, refs);
             }
+            IRExprKind::Unary { operand, .. } => {
+                self.collect_references_from_expr(operand, refs);
+            }
             IRExprKind::Call { callee, args } => {
                 self.collect_references_from_expr(callee, refs);
                 for arg in args {

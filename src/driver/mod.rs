@@ -12,8 +12,10 @@
 pub mod conversion;
 pub mod io;
 pub mod pipeline;
+pub mod runtime;
 
 // Re-export commonly used functions
 pub use conversion::wasm_to_wat;
 pub use io::{write_wasm_file, write_wat_file};
 pub use pipeline::{compile_and_write, compile_and_write_ir};
+pub use runtime::{load_runtime_ast, merge_runtime_ast_with_user};

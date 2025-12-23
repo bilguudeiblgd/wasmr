@@ -107,6 +107,9 @@ impl WasmGenerator {
             BinaryOp::Equality => {
                 Self::emit_typed_instruction(func, ty, Instruction::I32Eq, Instruction::F64Eq);
             }
+            BinaryOp::NotEqual => {
+                Self::emit_typed_instruction(func, ty, Instruction::I32Ne, Instruction::F64Ne);
+            }
             BinaryOp::Or => {
                 // booleans are represented as i32 0/1
                 func.instruction(&Instruction::I32Or);

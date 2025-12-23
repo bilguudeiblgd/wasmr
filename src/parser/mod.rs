@@ -71,6 +71,8 @@ impl Parser {
             | (Some(Token::For), Token::For)
             | (Some(Token::While), Token::While)
             | (Some(Token::Equality), Token::Equality)
+            | (Some(Token::NotEqual), Token::NotEqual)
+            | (Some(Token::LogicalNot), Token::LogicalNot)
             | (Some(Token::In), Token::In)
             | (Some(Token::Newline), Token::Newline) => true,
             | (None, _) => false,

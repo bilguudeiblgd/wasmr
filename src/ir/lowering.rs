@@ -470,6 +470,29 @@ impl<'a> LowerCtx<'a> {
                 })
             }
             AstExpr::Grouping(inner) => self.lower_expr(*inner),
+            AstExpr::Unary { op, operand } => {
+                use crate::ast::UnaryOp;
+                let operand_ir = self.lower_expr(*operand)?;
+                match op {
+                    UnaryOp::LogicalNot => {
+                        // Logical not requires boolean operand
+                        if operand_ir.ty != Type::Logical {
+                            return Err(TypeError::TypeMismatch {
+                                expected: Type::Logical,
+                                found: operand_ir.ty,
+                                context: "logical not operator".to_string(),
+                            });
+                        }
+                        Ok(IRExpr {
+                            kind: IRExprKind::Unary {
+                                op,
+                                operand: Box::new(operand_ir),
+                            },
+                            ty: Type::Logical,
+                        })
+                    }
+                }
+            }
             AstExpr::Binary { left, op, right } => {
                 let l = self.lower_expr(*left)?;
                 let r = self.lower_expr(*right)?;
@@ -502,7 +525,8 @@ impl<'a> LowerCtx<'a> {
                     | BinaryOp::LessEqual
                     | BinaryOp::Greater
                     | BinaryOp::GreaterEqual
-                    | BinaryOp::Equality => {
+                    | BinaryOp::Equality
+                    | BinaryOp::NotEqual => {
                         let _ = self.tr.unify_numeric(&l.ty, &r.ty)?;
                         Ok(IRExpr {
                             kind: IRExprKind::Binary {

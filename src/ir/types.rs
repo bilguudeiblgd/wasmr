@@ -1,4 +1,4 @@
-use crate::ast::BinaryOp;
+use crate::ast::{BinaryOp, UnaryOp};
 use crate::types::{Param, Type};
 
 /// A typed block of statements with an optional tail expression.
@@ -68,6 +68,10 @@ pub enum IRExprKind {
         left: Box<IRExpr>,
         op: BinaryOp,
         right: Box<IRExpr>,
+    },
+    Unary {
+        op: UnaryOp,
+        operand: Box<IRExpr>,
     },
     Call {
         callee: Box<IRExpr>,

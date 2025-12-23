@@ -19,6 +19,7 @@ pub enum BinaryOp {
     Mul,
     Div,
     Equality,
+    NotEqual, // '!='
     Less,
     LessEqual,
     Greater,
@@ -26,6 +27,11 @@ pub enum BinaryOp {
     Range, // for ':' operator
     Or,    // '|'
     And,   // '&'
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    LogicalNot, // '!'
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -48,6 +54,10 @@ pub enum Expr {
         left: Box<Expr>,
         op: BinaryOp,
         right: Box<Expr>,
+    },
+    Unary {
+        op: UnaryOp,
+        operand: Box<Expr>,
     },
     Call {
         callee: Box<Expr>,

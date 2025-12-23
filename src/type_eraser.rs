@@ -163,6 +163,13 @@ fn expr_to_r(expr: &Expr) -> String {
             s.push('}');
             s
         }
+        Expr::Unary { op, operand } => {
+            use crate::ast::UnaryOp;
+            let op_str = match op {
+                UnaryOp::LogicalNot => "!",
+            };
+            format!("{}{}", op_str, expr_to_r(operand))
+        }
         Expr::Binary { left, op, right } => {
             let op_str = match op {
                 BinaryOp::Plus => "+",
@@ -170,6 +177,7 @@ fn expr_to_r(expr: &Expr) -> String {
                 BinaryOp::Mul => "*",
                 BinaryOp::Div => "/",
                 BinaryOp::Equality => "==",
+                BinaryOp::NotEqual => "!=",
                 BinaryOp::Less => "<",
                 BinaryOp::LessEqual => "<=",
                 BinaryOp::Greater => ">",

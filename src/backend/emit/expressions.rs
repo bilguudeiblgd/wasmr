@@ -1,4 +1,5 @@
 use crate::types::Type;
+use crate::ast::UnaryOp;
 use crate::ir::{IRExpr, IRExprKind};
 use wasm_encoder::{Function, HeapType, Ieee64, Instruction};
 
@@ -22,6 +23,9 @@ impl WasmGenerator {
             }
             IRExprKind::Binary { left, op, right } => {
                 self.gen_binary_op(func, ctx, op, left, right)
+            }
+            IRExprKind::Unary { op, operand } => {
+                self.gen_unary_op(func, ctx, *op, operand);
             }
             IRExprKind::Identifier(name) => {
                 // Check if this is a captured variable (from parent scope, passed via environment)
@@ -407,6 +411,21 @@ impl WasmGenerator {
             func.instruction(&Instruction::LocalGet(idx));
         } else {
             func.instruction(&Instruction::RefNull(HeapType::ANY));
+        }
+    }
+
+    pub(crate) fn gen_unary_op(&mut self, func: &mut Function, ctx: &LocalContext, op: UnaryOp, operand: &IRExpr) {
+        // Generate the operand value first
+        self.gen_expr(func, ctx, operand);
+
+        // Apply the unary operator
+        match op {
+            UnaryOp::LogicalNot => {
+                // For logical not, we use i32.eqz (equals zero)
+                // Since booleans are represented as i32 (0 or 1),
+                // eqz will flip: 0 -> 1, 1 -> 0
+                func.instruction(&Instruction::I32Eqz);
+            }
         }
     }
 }

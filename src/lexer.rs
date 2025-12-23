@@ -164,6 +164,20 @@ impl Lexer {
                         },
                     }
                 }
+                '!' => {
+                    // Check if it's != or just !
+                    match self.peek_n(&chars, current, 1) {
+                        Some('=') => {
+                            tokens.push(Token::NotEqual);
+                            self.consume(&chars, &mut current);
+                            self.consume(&chars, &mut current);
+                        }
+                        _ => {
+                            tokens.push(Token::LogicalNot);
+                            self.consume(&chars, &mut current);
+                        }
+                    }
+                }
                 '[' => {
                     tokens.push(Token::LBracket);
                     self.consume(&chars, &mut current);
@@ -172,6 +186,7 @@ impl Lexer {
                     tokens.push(Token::RBracket);
                     self.consume(&chars, &mut current);
                 }
+                
                 '0'..='9' => {
                     let (num, new_current) = self.parse_number(&chars, current);
                     tokens.push(Token::Number(num));
@@ -284,6 +299,8 @@ pub enum Token {
     Or,  // '|'
     And, // '&'
     Equality,
+    NotEqual, // '!='
+    LogicalNot, // '!'
     LParen,
     RParen,
     LBrace,
