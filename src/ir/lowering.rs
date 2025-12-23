@@ -498,6 +498,7 @@ impl<'a> LowerCtx<'a> {
             BuiltinKind::C => "c",
             BuiltinKind::List => "list",
             BuiltinKind::Print => "print",
+            BuiltinKind::Length => "length",
         };
 
         if args.is_empty() {
@@ -595,6 +596,32 @@ impl<'a> LowerCtx<'a> {
                         expected: Type::Int,
                         found: args[0].ty.clone(),
                         context: format!("print argument"),
+                    });
+                }
+
+                Ok(IRExpr {
+                    kind: IRExprKind::BuiltinCall {
+                        builtin: kind,
+                        args,
+                    },
+                    ty: return_ty,
+                })
+            }
+            BuiltinKind::Length => {
+                if args.len() != 1 {
+                    return Err(TypeError::ArityMismatch {
+                        func: name.to_string(),
+                        expected: 1,
+                        found: args.len(),
+                    });
+                }
+
+                // Verify argument is a vector
+                if !matches!(args[0].ty, Type::Vector(_)) {
+                    return Err(TypeError::TypeMismatch {
+                        expected: Type::Vector(Box::new(Type::Any)),
+                        found: args[0].ty.clone(),
+                        context: "length() argument must be a vector".to_string(),
                     });
                 }
 

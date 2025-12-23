@@ -1,3 +1,4 @@
+use crate::ast::Type;
 use crate::ir::{BuiltinKind, IRExpr};
 use wasm_encoder::{BlockType, Function, HeapType, Instruction};
 
@@ -56,7 +57,7 @@ impl WasmGenerator {
                 func.instruction(&Instruction::I32Const(0));
             }
             BuiltinKind::C | BuiltinKind::List => {
-                // These are handled by creating vector literals
+                // These are handled by creating vector literals wrapped in structs
                 // Generate a vector from the arguments
                 for arg in args {
                     self.gen_expr(func, ctx, arg);
@@ -65,14 +66,64 @@ impl WasmGenerator {
                     let element_ty = &args[0].ty;
                     let storage = self.storage_type_for(element_ty);
                     let array_type_index = self.ensure_array_type(&storage);
+                    let vec_len = args.len() as u32;
+
+                    // Create the array
                     func.instruction(&Instruction::ArrayNewFixed {
                         array_type_index,
-                        array_size: args.len() as u32,
+                        array_size: vec_len,
                     });
+
+                    // Stack: [array_ref]
+                    // Now wrap in struct: (struct (field data array) (field length i32))
+
+                    // Push length onto stack
+                    func.instruction(&Instruction::I32Const(vec_len as i32));
+
+                    // Stack: [array_ref, length]
+                    // Create the struct
+                    let struct_type_idx = self.ensure_vector_struct_type(&storage);
+                    func.instruction(&Instruction::StructNew(struct_type_idx));
+
+                    // Stack: [struct_ref]
                 } else {
                     // Empty vector - push null reference
                     func.instruction(&Instruction::RefNull(HeapType::ANY));
                 }
+            }
+            BuiltinKind::Length => {
+                // length(vec) - extract the length field from the vector struct
+                if args.is_empty() {
+                    // Should not happen due to type checking
+                    func.instruction(&Instruction::I32Const(0));
+                    return;
+                }
+
+                // Get the vector struct
+                self.gen_expr(func, ctx, &args[0]);
+
+                // Extract element type from vector type
+                let elem_ty = match &args[0].ty {
+                    Type::Vector(inner) => &**inner,
+                    _ => {
+                        // Should not happen due to type checking
+                        func.instruction(&Instruction::Drop);
+                        func.instruction(&Instruction::I32Const(0));
+                        return;
+                    }
+                };
+
+                let storage = self.storage_type_for(elem_ty);
+                let struct_type_idx = self.ensure_vector_struct_type(&storage);
+
+                // Stack: [struct_ref]
+                // Extract field 1 (length)
+                func.instruction(&Instruction::StructGet {
+                    struct_type_index: struct_type_idx,
+                    field_index: 1,
+                });
+
+                // Stack: [i32_length]
             }
         }
     }

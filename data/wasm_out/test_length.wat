@@ -124,20 +124,18 @@
     local.get 5
   )
   (func (;4;) (type 5)
-    (local (ref 6) i32)
-    i32.const 10
-    i32.const 20
-    i32.const 30
-    array.new_fixed 3 3
+    (local (ref 6) i32 (ref 6) i32 i32 i32 i32 (ref 6) i32)
+    i32.const 1
+    i32.const 2
     i32.const 3
+    i32.const 4
+    i32.const 5
+    array.new_fixed 3 5
+    i32.const 5
     struct.new 6
     local.set 0
     local.get 0
-    struct.get 6 0
-    i32.const 2
-    i32.const 1
-    i32.sub
-    array.get 3
+    struct.get 6 1
     local.set 1
     local.get 1
     call 2
@@ -150,5 +148,85 @@
     call 1
     i32.const 0
     drop
+    i32.const 1
+    i32.const 2
+    i32.const 3
+    i32.const 4
+    i32.const 5
+    i32.const 6
+    i32.const 7
+    i32.const 8
+    i32.const 9
+    i32.const 10
+    array.new_fixed 3 10
+    i32.const 10
+    struct.new 6
+    local.set 2
+    local.get 2
+    struct.get 6 1
+    local.set 3
+    local.get 3
+    call 2
+    call 1
+    i32.const 12
+    i32.const 10
+    i32.store8
+    i32.const 12
+    i32.const 1
+    call 1
+    i32.const 0
+    drop
+    local.get 0
+    struct.get 6 0
+    i32.const 1
+    i32.const 1
+    i32.sub
+    array.get 3
+    local.set 4
+    local.get 4
+    call 2
+    call 1
+    i32.const 12
+    i32.const 10
+    i32.store8
+    i32.const 12
+    i32.const 1
+    call 1
+    i32.const 0
+    drop
+    local.get 0
+    local.set 7
+    local.get 7
+    struct.get 6 1
+    local.set 8
+    i32.const 0
+    local.set 6
+    block ;; label = @1
+      loop ;; label = @2
+        local.get 7
+        struct.get 6 0
+        local.get 6
+        array.get 3
+        local.set 5
+        local.get 5
+        call 2
+        call 1
+        i32.const 12
+        i32.const 10
+        i32.store8
+        i32.const 12
+        i32.const 1
+        call 1
+        i32.const 0
+        drop
+        local.get 6
+        i32.const 1
+        i32.add
+        local.tee 6
+        local.get 8
+        i32.lt_s
+        br_if 0 (;@2;)
+      end
+    end
   )
 )

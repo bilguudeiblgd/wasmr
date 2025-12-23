@@ -5,6 +5,7 @@
   (type (;3;) (array (mut i32)))
   (type (;4;) (func (param (ref 3) (ref 3)) (result (ref 3))))
   (type (;5;) (func))
+  (type (;6;) (struct (field (ref 3)) (field i32)))
   (import "wasi_snapshot_preview1" "fd_write" (func (;0;) (type 0)))
   (memory (;0;) 1)
   (export "memory" (memory 0))
@@ -123,19 +124,23 @@
     local.get 5
   )
   (func (;4;) (type 5)
-    (local (ref 3))
+    (local (ref 6))
     i32.const 1
     i32.const 2
     i32.const 3
     array.new_fixed 3 3
+    i32.const 3
+    struct.new 6
     local.set 0
     local.get 0
+    struct.get 6 0
     i32.const 2
     i32.const 1
     i32.sub
     i32.const 99
     array.set 3
     local.get 0
+    struct.get 6 0
     i32.const 2
     i32.const 1
     i32.sub

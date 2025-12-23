@@ -51,6 +51,13 @@ impl TypeResolver {
                 return_type: Type::Void,
             }
         );
+        builtins.insert(
+            "length".to_string(),
+            BuiltinDescriptor {
+                kind: BuiltinKind::Length,
+                return_type: Type::Int,
+            }
+        );
         Self {
             vars: HashMap::new(),
             funcs: HashMap::new(),

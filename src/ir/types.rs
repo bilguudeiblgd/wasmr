@@ -23,7 +23,8 @@ impl IRProgram {
 pub enum BuiltinKind {
     C,
     List,
-    Print
+    Print,
+    Length,
 }
 
 #[derive(Debug, Clone, PartialEq)]

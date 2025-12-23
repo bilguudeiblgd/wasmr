@@ -32,6 +32,11 @@ pub struct WasmGenerator {
     array_type_f32: Option<u32>,
     array_type_f64: Option<u32>,
     array_type_anyref: Option<u32>,
+    // Vector struct types: struct { data: array<T>, length: i32 }
+    vector_struct_i32: Option<u32>,
+    vector_struct_f32: Option<u32>,
+    vector_struct_f64: Option<u32>,
+    vector_struct_anyref: Option<u32>,
 }
 
 impl WasmGenerator {
@@ -52,6 +57,10 @@ impl WasmGenerator {
             array_type_f32: None,
             array_type_f64: None,
             array_type_anyref: None,
+            vector_struct_i32: None,
+            vector_struct_f32: None,
+            vector_struct_f64: None,
+            vector_struct_anyref: None,
         }
     }
 
