@@ -15,7 +15,7 @@ use crate::types::Type;
 use context::LocalContext;
 use crate::ir::{FunctionMetadata, IRProgram, IRStmt as Stmt};
 use std::collections::HashMap;
-use wasm_encoder::{CodeSection, CompositeInnerType, CompositeType, DataSection, ExportKind, ExportSection, FieldType, FuncType, Function, FunctionSection, HeapType, ImportSection, Instruction, MemorySection, Module, RefType, StorageType, StructType, SubType, TypeSection, ValType};
+use wasm_encoder::{CodeSection, CompositeInnerType, CompositeType, DataSection, ExportKind, ExportSection, FieldType, Function, FunctionSection, HeapType, ImportSection, Instruction, MemorySection, Module, RefType, StorageType, StructType, SubType, TypeSection, ValType};
 
 // Function signature for tracking unique function types
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
@@ -178,10 +178,10 @@ impl WasmGenerator {
 
         // PASS 2B: Second pass - declare function types
         // Now base_env_types is populated, so wasm_valtype can correctly handle closure return types
-        let mut current_func_idx = main_func_index + 1;
+        let mut _current_func_idx = main_func_index + 1;
 
         for func_stmt in &program.functions {
-            if let Stmt::FunctionDef { name, params, return_type, metadata, .. } = func_stmt {
+            if let Stmt::FunctionDef { params, return_type, metadata, .. } = func_stmt {
                 let metadata = metadata.as_ref().expect("All functions should have metadata after passes");
 
                 // Declare function type
@@ -222,7 +222,7 @@ impl WasmGenerator {
 
                 self.functions.function(type_index);
 
-                current_func_idx += 1;
+                _current_func_idx += 1;
             }
         }
 

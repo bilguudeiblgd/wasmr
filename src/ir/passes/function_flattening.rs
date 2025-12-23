@@ -9,7 +9,7 @@
 /// 3. Adds them to IRProgram.functions
 /// 4. Leaves function references in place (function names are still accessible)
 
-use crate::ir::{IRBlock, IRProgram, IRStmt, IRExpr, IRExprKind};
+use crate::ir::{IRBlock, IRProgram, IRStmt};
 use super::{Pass, PassError};
 
 pub struct FunctionFlatteningPass;
@@ -27,20 +27,20 @@ impl FunctionFlatteningPass {
             let is_function_def = matches!(&block.stmts[i], IRStmt::FunctionDef { .. });
 
             if is_function_def {
-                if let IRStmt::FunctionDef { name, params, return_type, body, metadata, .. } = &mut block.stmts[i] {
+                if let IRStmt::FunctionDef { body, .. } = &mut block.stmts[i] {
                     // Extract nested functions from this function's body first
                     self.extract_functions(body, functions);
 
                     // Collect info needed for closure creation
-                    let func_name = name.clone();
-                    let func_params = params.clone();
-                    let func_return_type = return_type.clone();
-                    let is_closure = metadata.as_ref()
-                        .map(|m| m.is_closure)
-                        .unwrap_or(false);
-                    let captured_var_names: Vec<String> = metadata.as_ref()
-                        .map(|m| m.captured_vars.iter().map(|c| c.name.clone()).collect())
-                        .unwrap_or_default();
+                    // let func_name = name.clone();
+                    // let func_params = params.clone();
+                    // let func_return_type = return_type.clone();
+                    // let is_closure = metadata.as_ref()
+                    //     .map(|m| m.is_closure)
+                    //     .unwrap_or(false);
+                    // let captured_var_names: Vec<String> = metadata.as_ref()
+                    //     .map(|m| m.captured_vars.iter().map(|c| c.name.clone()).collect())
+                    //     .unwrap_or_default();
 
                     // Remove this function from parent and add to top-level
                     let func = block.stmts.remove(i);

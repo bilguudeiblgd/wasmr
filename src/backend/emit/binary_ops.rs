@@ -6,6 +6,21 @@ use wasm_encoder::{Function, Instruction};
 use super::super::{context::LocalContext, WasmGenerator};
 
 impl WasmGenerator {
+    fn emit_typed_instruction(
+        func: &mut Function,
+        ty: &Type,
+        i32_instr: Instruction,
+        f32_instr: Instruction,
+        f64_instr: Instruction,
+    ) {
+        match ty {
+            Type::Int => func.instruction(&i32_instr),
+            Type::Float => func.instruction(&f32_instr),
+            Type::Double => func.instruction(&f64_instr),
+            _ => func.instruction(&i32_instr), // fallback
+        };
+    }
+
     pub(crate) fn gen_vector_binary_op(&mut self,
                             func: &mut Function,
                             ctx: &LocalContext,
@@ -38,7 +53,7 @@ impl WasmGenerator {
         left: &IRExpr,
         right: &IRExpr,
     ) {
-        if(matches!(left.ty, Type::Vector(_)) || matches!(right.ty, Type::Vector(_))) {
+        if matches!(left.ty, Type::Vector(_)) || matches!(right.ty, Type::Vector(_)) {
             self.gen_vector_binary_op(func, ctx, op, left, right);
             return;
         }
@@ -57,7 +72,7 @@ impl WasmGenerator {
         let ty = &left.ty;
 
         // sign of bad design
-        if(matches!(op, BinaryOp::Range)) {
+        if matches!(op, BinaryOp::Range) {
             self.gen_range(func, ctx, left, right);
             return;
         }
@@ -68,76 +83,31 @@ impl WasmGenerator {
 
         match op {
             BinaryOp::Plus => {
-                match ty {
-                    Type::Int => func.instruction(&Instruction::I32Add),
-                    Type::Float => func.instruction(&Instruction::F32Add),
-                    Type::Double => func.instruction(&Instruction::F64Add),
-                    _ => func.instruction(&Instruction::I32Add), // fallback
-                };
+                Self::emit_typed_instruction(func, ty, Instruction::I32Add, Instruction::F32Add, Instruction::F64Add);
             }
             BinaryOp::Minus => {
-                match ty {
-                    Type::Int => func.instruction(&Instruction::I32Sub),
-                    Type::Float => func.instruction(&Instruction::F32Sub),
-                    Type::Double => func.instruction(&Instruction::F64Sub),
-                    _ => func.instruction(&Instruction::I32Sub),
-                };
+                Self::emit_typed_instruction(func, ty, Instruction::I32Sub, Instruction::F32Sub, Instruction::F64Sub);
             }
             BinaryOp::Mul => {
-                match ty {
-                    Type::Int => func.instruction(&Instruction::I32Mul),
-                    Type::Float => func.instruction(&Instruction::F32Mul),
-                    Type::Double => func.instruction(&Instruction::F64Mul),
-                    _ => func.instruction(&Instruction::I32Mul),
-                };
+                Self::emit_typed_instruction(func, ty, Instruction::I32Mul, Instruction::F32Mul, Instruction::F64Mul);
             }
             BinaryOp::Div => {
-                match ty {
-                    Type::Int => func.instruction(&Instruction::I32DivS),
-                    Type::Float => func.instruction(&Instruction::F32Div),
-                    Type::Double => func.instruction(&Instruction::F64Div),
-                    _ => func.instruction(&Instruction::I32DivS),
-                };
+                Self::emit_typed_instruction(func, ty, Instruction::I32DivS, Instruction::F32Div, Instruction::F64Div);
             }
             BinaryOp::Less => {
-                match ty {
-                    Type::Int => func.instruction(&Instruction::I32LtS),
-                    Type::Float => func.instruction(&Instruction::F32Lt),
-                    Type::Double => func.instruction(&Instruction::F64Lt),
-                    _ => func.instruction(&Instruction::I32LtS),
-                };
+                Self::emit_typed_instruction(func, ty, Instruction::I32LtS, Instruction::F32Lt, Instruction::F64Lt);
             }
             BinaryOp::LessEqual => {
-                match ty {
-                    Type::Int => func.instruction(&Instruction::I32LeS),
-                    Type::Float => func.instruction(&Instruction::F32Le),
-                    Type::Double => func.instruction(&Instruction::F64Le),
-                    _ => func.instruction(&Instruction::I32LeS),
-                };
+                Self::emit_typed_instruction(func, ty, Instruction::I32LeS, Instruction::F32Le, Instruction::F64Le);
             }
             BinaryOp::Greater => {
-                match ty {
-                    Type::Int => func.instruction(&Instruction::I32GtS),
-                    Type::Float => func.instruction(&Instruction::F32Gt),
-                    Type::Double => func.instruction(&Instruction::F64Gt),
-                    _ => func.instruction(&Instruction::I32GtS),
-                };
-            },
+                Self::emit_typed_instruction(func, ty, Instruction::I32GtS, Instruction::F32Gt, Instruction::F64Gt);
+            }
             BinaryOp::GreaterEqual => {
-                match ty {
-                    Type::Int => func.instruction(&Instruction::I32GeS),
-                    Type::Float => func.instruction(&Instruction::F32Ge),
-                    Type::Double => func.instruction(&Instruction::F64Ge),
-                    _ => func.instruction(&Instruction::I32GeS),
-                };
-            },
+                Self::emit_typed_instruction(func, ty, Instruction::I32GeS, Instruction::F32Ge, Instruction::F64Ge);
+            }
             BinaryOp::Equality => {
-                match ty {
-                    Type::Int => func.instruction(&Instruction::I32Eq),
-                    Type::Float => func.instruction(&Instruction::F32Eq),
-                    Type::Double => func.instruction(&Instruction::F64Eq),
-                    _ => func.instruction(&Instruction::I32Eq),
-                };
+                Self::emit_typed_instruction(func, ty, Instruction::I32Eq, Instruction::F32Eq, Instruction::F64Eq);
             }
             BinaryOp::Or => {
                 // booleans are represented as i32 0/1

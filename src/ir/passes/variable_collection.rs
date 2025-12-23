@@ -3,11 +3,11 @@
 /// Collects all variables in functions and assigns WASM local indices.
 /// This includes parameters, user-declared variables, and compiler-generated temporaries.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 
 use crate::types::{Param, ParamKind, Type};
 use crate::ir::{
-    BuiltinKind, FunctionMetadata, IRExpr, IRExprKind, IRProgram, IRStmt, LocalVarInfo,
+    FunctionMetadata, IRProgram, IRStmt, LocalVarInfo,
     VarArgsInfo, VarOrigin,
 };
 

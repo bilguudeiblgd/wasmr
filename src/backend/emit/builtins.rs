@@ -5,7 +5,7 @@
 //! functions that appear in the source code.
 
 use crate::ir::{BuiltinKind, IRExpr};
-use wasm_encoder::{BlockType, Function, HeapType, Instruction};
+use wasm_encoder::{Function, HeapType, Instruction};
 
 use super::super::{context::LocalContext, WasmGenerator};
 

@@ -33,7 +33,7 @@ impl WasmGenerator {
         param_types: &[Type],
         return_type: &Type,
         captured_vars: &[CapturedVarInfo],
-        func_idx: u32,
+        _: u32,
     ) -> (u32, u32) {
         // Generate a canonical key based on the structure, not the function name
         // This allows reusing the same type for different functions with identical environments

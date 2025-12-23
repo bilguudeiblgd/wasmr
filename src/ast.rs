@@ -1,4 +1,4 @@
-use crate::types::{Type, Param, ParamKind};
+use crate::types::{Type, Param};
 
 /// A block of statements with an optional tail expression.
 /// The tail expression, if present, represents the value of the block.

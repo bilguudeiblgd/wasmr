@@ -1,5 +1,5 @@
 use crate::types::{Param, ParamKind, Type};
-use wasm_encoder::{FieldType, HeapType, RefType, StorageType, StructType, ValType};
+use wasm_encoder::{FieldType, HeapType, RefType, StorageType, ValType};
 
 use super::super::WasmGenerator;
 

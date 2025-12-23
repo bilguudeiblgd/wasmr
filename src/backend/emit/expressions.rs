@@ -5,6 +5,16 @@ use wasm_encoder::{Function, HeapType, Ieee32, Ieee64, Instruction};
 use super::super::{context::LocalContext, WasmGenerator};
 
 impl WasmGenerator {
+    fn extract_normal_param_types(params: &[crate::types::Param]) -> Vec<Type> {
+        params
+            .iter()
+            .filter_map(|p| match &p.kind {
+                crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
+                crate::types::ParamKind::VarArgs => None,
+            })
+            .collect()
+    }
+
     pub(crate) fn gen_expr(&mut self, func: &mut Function, ctx: &LocalContext, expr: &IRExpr) {
         match &expr.kind {
             IRExprKind::Number(n) => {
@@ -295,13 +305,7 @@ impl WasmGenerator {
                     // Function stored in a variable - could be a function with environment or bare function ref
                     // Check if this function signature corresponds to a closure
                     let closure_info = if let Type::Function { params, return_type } = &callee.ty {
-                        let param_types: Vec<Type> = params
-                            .iter()
-                            .filter_map(|p| match &p.kind {
-                                crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
-                                crate::types::ParamKind::VarArgs => None,
-                            })
-                            .collect();
+                        let param_types = Self::extract_normal_param_types(params);
                         self.get_closure_info_for_signature(&param_types, return_type)
                     } else {
                         None
@@ -341,13 +345,7 @@ impl WasmGenerator {
 
                         // Get the function type index for call_ref
                         if let Type::Function { params, return_type } = &callee.ty {
-                            let param_types: Vec<Type> = params
-                                .iter()
-                                .filter_map(|p| match &p.kind {
-                                    crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
-                                    crate::types::ParamKind::VarArgs => None,
-                                })
-                                .collect();
+                            let param_types = Self::extract_normal_param_types(params);
                             let type_idx = self.get_or_create_func_type_index(&param_types, return_type);
                             func.instruction(&Instruction::CallRef(type_idx));
                         } else {
@@ -374,13 +372,7 @@ impl WasmGenerator {
 
                 // Get the function type index for call_ref
                 if let Type::Function { params, return_type } = &callee.ty {
-                    let param_types: Vec<Type> = params
-                        .iter()
-                        .filter_map(|p| match &p.kind {
-                            crate::types::ParamKind::Normal(ty) => Some(ty.clone()),
-                            crate::types::ParamKind::VarArgs => None,
-                        })
-                        .collect();
+                    let param_types = Self::extract_normal_param_types(params);
                     let type_idx = self.get_or_create_func_type_index(&param_types, return_type);
                     func.instruction(&Instruction::CallRef(type_idx));
                 } else {
@@ -390,7 +382,7 @@ impl WasmGenerator {
         }
     }
 
-    pub(crate) fn gen_number(&mut self, func: &mut Function, ctx: &LocalContext, ty: &Type, numeric_string: &String) {
+    pub(crate) fn gen_number(&mut self, func: &mut Function, _: &LocalContext, ty: &Type, numeric_string: &String) {
         match &ty {
             &Type::Int => {
                 let num = numeric_string.parse::<i32>().unwrap();

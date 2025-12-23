@@ -8,12 +8,20 @@
   (type (;6;) (array (mut i32)))
   (type (;7;) (func (param (ref 6) (ref 6)) (result (ref 6))))
   (type (;8;) (func))
-  (type (;9;) (func))
+  (type (;9;) (func (param i32) (result i32)))
+  (type (;10;) (func (param i32) (result i32)))
+  (type (;11;) (func (result f64)))
+  (type (;12;) (func (param i32) (result i32)))
+  (type (;13;) (func))
   (import "wasi_snapshot_preview1" "fd_write" (func (;0;) (type 0)))
   (memory (;0;) 1)
+  (export "double_it" (func 8))
+  (export "is_even" (func 9))
+  (export "get_pi" (func 10))
+  (export "add_ten" (func 11))
   (export "memory" (memory 0))
   (export "main" (func 7))
-  (export "_start" (func 8))
+  (export "_start" (func 12))
   (func (;1;) (type 1) (param i32 i32)
     i32.const 1024
     local.get 0
@@ -263,11 +271,12 @@
     local.get 5
   )
   (func (;7;) (type 8)
-    (local f32 f64)
-    f64.const 0x1.4p+1 (;=2.5;)
+    (local i32 i32 f64 i32)
+    i32.const 21
+    call 8
     local.set 0
     local.get 0
-    call 3
+    call 2
     call 1
     i32.const 12
     i32.const 10
@@ -275,9 +284,21 @@
     i32.const 12
     i32.const 1
     call 1
-    f64.const 0x1.5fae147ae147bp+3 (;=10.99;)
+    i32.const 2
+    call 9
     local.set 1
     local.get 1
+    call 5
+    call 1
+    i32.const 12
+    i32.const 10
+    i32.store8
+    i32.const 12
+    i32.const 1
+    call 1
+    call 10
+    local.set 2
+    local.get 2
     call 4
     call 1
     i32.const 12
@@ -286,8 +307,38 @@
     i32.const 12
     i32.const 1
     call 1
+    i32.const 5
+    call 11
+    local.set 3
+    local.get 3
+    call 2
+    call 1
+    i32.const 12
+    i32.const 10
+    i32.store8
+    i32.const 12
+    i32.const 1
+    call 1
   )
-  (func (;8;) (type 9)
+  (func (;8;) (type 9) (param i32) (result i32)
+    local.get 0
+    i32.const 2
+    i32.mul
+  )
+  (func (;9;) (type 10) (param i32) (result i32)
+    local.get 0
+    i32.const 2
+    i32.eq
+  )
+  (func (;10;) (type 11) (result f64)
+    f64.const 0x1.91eb851eb851fp+1 (;=3.14;)
+  )
+  (func (;11;) (type 12) (param i32) (result i32)
+    local.get 0
+    i32.const 10
+    i32.add
+  )
+  (func (;12;) (type 13)
     call 7
   )
   (data (;0;) (i32.const 16) "TRUE")

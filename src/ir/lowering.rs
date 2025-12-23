@@ -1,8 +1,10 @@
-use crate::types::{Type, Param, ParamKind};
+use super::type_resolver::{BuiltinDescriptor, FunctionCtx, TypeResolver};
+use super::types::{
+    BuiltinKind, IRBlock, IRExpr, IRExprKind, IRProgram, IRStmt, TyResult, TypeError,
+};
+use crate::ast::{BinaryOp, Block, Expr as AstExpr, Expr, Stmt as AstStmt};
 use crate::types::Type::Vector;
-use crate::ast::{Block, BinaryOp, Expr as AstExpr, Expr, Stmt as AstStmt, Stmt};
-use super::types::{BuiltinKind, IRBlock, IRExpr, IRExprKind, IRProgram, IRStmt, TyResult, TypeError};
-use super::type_resolver::{TypeResolver, FunctionCtx, BuiltinDescriptor};
+use crate::types::{ParamKind, Type};
 
 /// Compare two types for compatibility, ignoring parameter names in function types
 fn types_compatible(t1: &Type, t2: &Type) -> bool {
@@ -12,7 +14,16 @@ fn types_compatible(t1: &Type, t2: &Type) -> bool {
     }
 
     match (t1, t2) {
-        (Type::Function { params: p1, return_type: r1 }, Type::Function { params: p2, return_type: r2 }) => {
+        (
+            Type::Function {
+                params: p1,
+                return_type: r1,
+            },
+            Type::Function {
+                params: p2,
+                return_type: r2,
+            },
+        ) => {
             // Check same number of parameters
             if p1.len() != p2.len() {
                 return false;
@@ -111,7 +122,7 @@ impl<'a> LowerCtx<'a> {
                 name,
                 x_type,
                 value,
-                is_super_assign
+                is_super_assign,
             } => {
                 // Special-case: function literal on RHS defines a named function
                 if let AstExpr::FunctionDef {
@@ -120,12 +131,14 @@ impl<'a> LowerCtx<'a> {
                     body,
                 } = value
                 {
-                    let ret_ty = return_type.unwrap_or(Type::Void);
+                    // Use Type::Any as placeholder for inference if no return type specified
+                    let declared_ret_ty = return_type;
+                    let placeholder_ret_ty = declared_ret_ty.clone().unwrap_or(Type::Any);
 
-                    // Create function type
+                    // Create function type with placeholder
                     let func_ty = Type::Function {
                         params: params.clone(),
-                        return_type: Box::new(ret_ty.clone()),
+                        return_type: Box::new(placeholder_ret_ty.clone()),
                     };
 
                     // Store function in current scope (before processing body)
@@ -157,34 +170,56 @@ impl<'a> LowerCtx<'a> {
                     });
                     self.tr.current_function = Some(FunctionCtx {
                         name: name.clone(),
-                        return_type: ret_ty.clone(),
+                        return_type: placeholder_ret_ty.clone(),
                         varargs_name,
                     });
 
                     // Lower body (can access parent function variables via scope stack)
                     let body_ir = self.lower_ast_block(body)?;
 
-                    // Check that block's tail expression type matches function return type
-                    // Only enforce this check if the function expects a non-Void return
-                    // AND the block has a tail expression (not relying on explicit returns)
-                    if ret_ty != Type::Void && body_ir.tail_expr.is_some() {
-                        if !types_compatible(&body_ir.ty, &ret_ty) {
-                            return Err(TypeError::TypeMismatch {
-                                expected: ret_ty.clone(),
-                                found: body_ir.ty.clone(),
-                                context: format!("function '{}' body", name),
-                            });
+                    // Infer return type from body if not explicitly declared
+                    let final_ret_ty = if let Some(explicit_ty) = declared_ret_ty {
+                        // Explicit return type: validate tail expression matches
+                        if explicit_ty != Type::Void && body_ir.tail_expr.is_some() {
+                            if !types_compatible(&body_ir.ty, &explicit_ty) {
+                                return Err(TypeError::TypeMismatch {
+                                    expected: explicit_ty.clone(),
+                                    found: body_ir.ty.clone(),
+                                    context: format!("function '{}' body", name),
+                                });
+                            }
                         }
-                    }
+                        explicit_ty
+                    } else {
+                        // No explicit return type: infer from tail expression
+                        // If no tail expression, function returns nothing (Void)
+                        if body_ir.tail_expr.is_some() {
+                            body_ir.ty.clone()
+                        } else {
+                            Type::Void
+                        }
+                    };
 
                     // Exit function scope
                     self.tr.exit_scope();
                     self.tr.current_function = saved_fn;
 
+                    // Update the function's type in the environment with the final inferred return type
+                    // This ensures that calls to this function see the correct return type
+                    let final_func_ty = Type::Function {
+                        params: params.clone(),
+                        return_type: Box::new(final_ret_ty.clone()),
+                    };
+                    if is_super_assign {
+                        self.tr.super_assign(&name, final_func_ty)?;
+                    } else {
+                        self.tr.define_var(name.clone(), final_func_ty);
+                    }
+
                     return Ok(IRStmt::FunctionDef {
                         name,
                         params,
-                        return_type: ret_ty,
+                        return_type: final_ret_ty,
                         body: body_ir,
                         metadata: None,
                     });
@@ -290,12 +325,12 @@ impl<'a> LowerCtx<'a> {
                     else_branch: else_ir,
                     result_ty,
                 })
-            },
+            }
 
             AstStmt::For {
                 iter_name,
                 iter_vector,
-                body
+                body,
             } => {
                 let iter_expr = self.lower_expr(iter_vector)?;
                 if let Vector(inner_box) = &iter_expr.ty {
@@ -314,9 +349,7 @@ impl<'a> LowerCtx<'a> {
                         body: body_block,
                     });
                 }
-                if matches!(&iter_expr.ty, Vector(some)) {
-
-                }
+                if matches!(&iter_expr.ty, Vector(_)) {}
 
                 Err(TypeError::TypeMismatch {
                     expected: Vector(Type::Int.into()),
@@ -338,7 +371,11 @@ impl<'a> LowerCtx<'a> {
                     body: body_block,
                 })
             }
-            AstStmt::IndexAssign { target, index, value } => {
+            AstStmt::IndexAssign {
+                target,
+                index,
+                value,
+            } => {
                 let target_ir = self.lower_expr(target)?;
                 let index_ir = self.lower_expr(index)?;
                 let value_ir = self.lower_expr(value)?;
@@ -383,9 +420,9 @@ impl<'a> LowerCtx<'a> {
     fn lower_expr(&mut self, expr: AstExpr) -> TyResult<IRExpr> {
         match expr {
             AstExpr::Number(s) => {
-                // Heuristic: integers have no dot; otherwise Float
+                // Heuristic: integers have no dot; otherwise Double (matches R's default)
                 let ty = if s.contains('.') {
-                    Type::Float
+                    Type::Double
                 } else {
                     Type::Int
                 };
@@ -416,9 +453,14 @@ impl<'a> LowerCtx<'a> {
                 kind: IRExprKind::XString(s),
                 ty: Type::String,
             }),
-            AstExpr::FunctionDef { params, return_type, .. } => {
-                // Function definition as expression (shouldn't normally happen, but handle it)
-                let ret_ty = return_type.unwrap_or(Type::Void);
+            AstExpr::FunctionDef {
+                params,
+                return_type,
+                ..
+            } => {
+                // For function expressions, default to Type::Any if no return type specified
+                // (Note: body is not lowered here - only when assigned to a variable)
+                let ret_ty = return_type.unwrap_or(Type::Any);
                 Ok(IRExpr {
                     kind: IRExprKind::Unit,
                     ty: Type::Function {
@@ -456,7 +498,11 @@ impl<'a> LowerCtx<'a> {
                             ty: res_ty,
                         })
                     }
-                    BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual | BinaryOp::Equality => {
+                    BinaryOp::Less
+                    | BinaryOp::LessEqual
+                    | BinaryOp::Greater
+                    | BinaryOp::GreaterEqual
+                    | BinaryOp::Equality => {
                         let _ = self.tr.unify_numeric(&l.ty, &r.ty)?;
                         Ok(IRExpr {
                             kind: IRExprKind::Binary {
@@ -503,11 +549,11 @@ impl<'a> LowerCtx<'a> {
                             })
                         }
                     }
-                    _ => Err(TypeError::UnsupportedOperation {
-                        op: format!("{:?}", op),
-                        left: l.ty,
-                        right: r.ty,
-                    }),
+                    // _ => Err(TypeError::UnsupportedOperation {
+                    //     op: format!("{:?}", op),
+                    //     left: l.ty,
+                    //     right: r.ty,
+                    // }),
                 }
             }
             AstExpr::Call { callee, args } => match *callee {
@@ -522,15 +568,20 @@ impl<'a> LowerCtx<'a> {
                     }
 
                     // Look up function type from scope
-                    let func_type = self.tr.lookup_var(&name)
+                    let func_type = self
+                        .tr
+                        .lookup_var(&name)
                         .ok_or_else(|| TypeError::UnknownFunction(name.clone()))?;
 
                     // Extract params and return type from Function type
                     let (params, ret_ty) = match &func_type {
-                        Type::Function { params, return_type } => (params.clone(), (**return_type).clone()),
+                        Type::Function {
+                            params,
+                            return_type,
+                        } => (params.clone(), (**return_type).clone()),
                         other => {
                             return Err(TypeError::TypeMismatch {
-                                expected: Type::Void,  // placeholder
+                                expected: Type::Void, // placeholder
                                 found: other.clone(),
                                 context: format!("{} is not a function", name),
                             });
@@ -577,14 +628,17 @@ impl<'a> LowerCtx<'a> {
                         kind: IRExprKind::Call {
                             callee: Box::new(IRExpr {
                                 kind: IRExprKind::Identifier(name),
-                                ty: func_type.clone(),  // Callee should have Function type
+                                ty: func_type.clone(), // Callee should have Function type
                             }),
                             args: ir_args,
                         },
                         ty: ret_ty,
                     })
                 }
-                AstExpr::Call { callee: inner_callee, args: inner_args } => {
+                AstExpr::Call {
+                    callee: inner_callee,
+                    args: inner_args,
+                } => {
                     // Recursive case: callee is itself a call expression
                     // e.g., outer(1.0)(2.0) where outer(1.0) returns a function
                     // Here: inner_callee = Identifier("outer"), inner_args = [1.0]
@@ -599,7 +653,10 @@ impl<'a> LowerCtx<'a> {
 
                     // The callee must evaluate to a function type
                     let (params, ret_ty) = match &callee_ir.ty {
-                        Type::Function { params, return_type } => (params.clone(), (**return_type).clone()),
+                        Type::Function {
+                            params,
+                            return_type,
+                        } => (params.clone(), (**return_type).clone()),
                         other => {
                             return Err(TypeError::TypeMismatch {
                                 expected: Type::Void, // placeholder
@@ -626,7 +683,9 @@ impl<'a> LowerCtx<'a> {
                     }
 
                     let mut ir_args = Vec::with_capacity(args.len());
-                    for (i, (arg_ast, param)) in args.into_iter().zip(params.into_iter()).enumerate() {
+                    for (i, (arg_ast, param)) in
+                        args.into_iter().zip(params.into_iter()).enumerate()
+                    {
                         let a_ir = self.lower_expr(arg_ast)?;
                         let expected_ty = match param.kind {
                             ParamKind::Normal(ty) => ty,
@@ -690,8 +749,12 @@ impl<'a> LowerCtx<'a> {
                         context: "only vectors can be indexed".to_string(),
                     }),
                 }
-            },
-            AstExpr::If { condition, then_branch, else_branch } => {
+            }
+            AstExpr::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
                 // Lower condition
                 let cond_ir = self.lower_expr(*condition)?;
 
@@ -720,7 +783,8 @@ impl<'a> LowerCtx<'a> {
                         return Err(TypeError::TypeMismatch {
                             expected: then_ir.ty.clone(),
                             found: else_ir.ty.clone(),
-                            context: "if expression branches must have compatible types".to_string(),
+                            context: "if expression branches must have compatible types"
+                                .to_string(),
                         });
                     }
                 } else {
@@ -736,13 +800,11 @@ impl<'a> LowerCtx<'a> {
                     },
                     ty: result_ty,
                 })
-            },
-            Expr::Logical(val) => {
-                Ok(IRExpr {
-                    kind: IRExprKind::Number(if val { "1" } else { "0" }.to_string()),
-                    ty: Type::Logical,
-                })
             }
+            Expr::Logical(val) => Ok(IRExpr {
+                kind: IRExprKind::Number(if val { "1" } else { "0" }.to_string()),
+                ty: Type::Logical,
+            }),
         }
     }
 
@@ -851,11 +913,16 @@ impl<'a> LowerCtx<'a> {
                 }
 
                 // Accept Int, Float, Double, or Logical for printing
-                if !matches!(args[0].ty, Type::Int | Type::Float | Type::Double | Type::Logical) {
+                if !matches!(
+                    args[0].ty,
+                    Type::Int | Type::Float | Type::Double | Type::Logical
+                ) {
                     return Err(TypeError::TypeMismatch {
                         expected: Type::Int,
                         found: args[0].ty.clone(),
-                        context: format!("print argument (expected int, float, double, or logical)"),
+                        context: format!(
+                            "print argument (expected int, float, double, or logical)"
+                        ),
                     });
                 }
 

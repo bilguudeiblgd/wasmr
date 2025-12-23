@@ -131,7 +131,7 @@ impl Lexer {
                 }
                 '>' => {
                     tokens.push(Token::Greater);
-                    if(self.peek_n(&chars, current, 1) == Some('=')) {
+                    if self.peek_n(&chars, current, 1) == Some('=') {
                         self.consume(&chars, &mut current);
                         tokens.push(Token::GreaterEqual);
                     }

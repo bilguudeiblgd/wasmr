@@ -74,6 +74,7 @@ fn walk_dir(
             // Recursively process subdirectories
             walk_dir(&path, lexer, processed, failed)?;
         } else if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("R") {
+            println!("Compling {:?}...", path.display());
             match process_file(&lexer, &path) {
                 Ok(out_path) => {
                     println!("Compiled {:?} -> {:?}", path, out_path);
