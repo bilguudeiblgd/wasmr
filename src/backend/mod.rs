@@ -38,12 +38,10 @@ pub struct WasmGenerator {
     type_count: u32,  // Manual tracking for recursion groups
     pub(crate) fd_write_idx: Option<u32>,
     array_type_i32: Option<u32>,
-    array_type_f32: Option<u32>,
     array_type_f64: Option<u32>,
     array_type_anyref: Option<u32>,
     // Vector struct types: (struct (field data (array T)) (field length i32))
     vector_struct_i32: Option<u32>,
-    vector_struct_f32: Option<u32>,
     vector_struct_f64: Option<u32>,
     vector_struct_anyref: Option<u32>,
     // Map function signatures to type indices for typed funcrefs
@@ -76,11 +74,9 @@ impl WasmGenerator {
             type_count: 0,
             fd_write_idx: None,
             array_type_i32: None,
-            array_type_f32: None,
             array_type_f64: None,
             array_type_anyref: None,
             vector_struct_i32: None,
-            vector_struct_f32: None,
             vector_struct_f64: None,
             vector_struct_anyref: None,
             func_type_indices: HashMap::new(),
@@ -147,11 +143,10 @@ impl WasmGenerator {
                 // Store metadata for use in gen_call
                 self.func_metadata.insert(name.clone(), metadata.clone());
 
-                eprintln!("Function {}: {} captured vars", name, metadata.captured_vars.len());
-                for cap in &metadata.captured_vars {
-                    eprintln!("  - {} (mutable: {})", cap.name, cap.is_mutable);
-                }
-
+                // for cap in &metadata.captured_vars {
+                //     eprintln!("  - {} (mutable: {})", cap.name, cap.is_mutable);
+                // }
+                
                 // If this function has captured variables, create environment struct types now
                 if metadata.captured_vars.len() > 0 {
                     let bare_param_types: Vec<Type> = params.iter()

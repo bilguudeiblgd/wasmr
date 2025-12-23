@@ -912,16 +912,16 @@ impl<'a> LowerCtx<'a> {
                     });
                 }
 
-                // Accept Int, Float, Double, or Logical for printing
+                // Accept Int, Double, or Logical for printing
                 if !matches!(
                     args[0].ty,
-                    Type::Int | Type::Float | Type::Double | Type::Logical
+                    Type::Int | Type::Double | Type::Logical
                 ) {
                     return Err(TypeError::TypeMismatch {
                         expected: Type::Int,
                         found: args[0].ty.clone(),
                         context: format!(
-                            "print argument (expected int, float, double, or logical)"
+                            "print argument (expected int, double, or logical)"
                         ),
                     });
                 }
@@ -972,11 +972,7 @@ fn ensure_ty(mut e: IRExpr, want: Type) -> IRExpr {
     // Allow implicit numeric promotions by just changing the expression's result type.
     // Real codegen can insert casts if needed later.
     match (&e.ty, &want) {
-        (Type::Int, Type::Float | Type::Double) => {
-            e.ty = want;
-            e
-        }
-        (Type::Float, Type::Double) => {
+        (Type::Int, Type::Double) => {
             e.ty = want;
             e
         }

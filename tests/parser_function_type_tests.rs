@@ -12,8 +12,8 @@ fn parse_program(s: &str) -> Vec<Stmt> {
 
 #[test]
 fn test_simple_function_type() {
-    // float -> float
-    let code = "f: float -> float <- function(x: float): float { return(x) }";
+    // double -> double
+    let code = "f: double -> double <- function(x: double): double { return(x) }";
     let stmts = parse_program(code);
 
     assert_eq!(stmts.len(), 1);
@@ -31,10 +31,10 @@ fn test_simple_function_type() {
                 params[0],
                 Param {
                     name: String::new(),
-                    kind: ParamKind::Normal(Type::Float)
+                    kind: ParamKind::Normal(Type::Double)
                 }
             );
-            assert_eq!(**return_type, Type::Float);
+            assert_eq!(**return_type, Type::Double);
         } else {
             panic!("Expected Function type");
         }
@@ -45,8 +45,8 @@ fn test_simple_function_type() {
 
 #[test]
 fn test_multi_param_function_type() {
-    // float, float -> int
-    let code = "add: float, float -> int <- function(x: float, y: float): int { return(0) }";
+    // double, double -> int
+    let code = "add: double, double -> int <- function(x: double, y: double): int { return(0) }";
     let stmts = parse_program(code);
 
     assert_eq!(stmts.len(), 1);
@@ -64,14 +64,14 @@ fn test_multi_param_function_type() {
                 params[0],
                 Param {
                     name: String::new(),
-                    kind: ParamKind::Normal(Type::Float)
+                    kind: ParamKind::Normal(Type::Double)
                 }
             );
             assert_eq!(
                 params[1],
                 Param {
                     name: String::new(),
-                    kind: ParamKind::Normal(Type::Float)
+                    kind: ParamKind::Normal(Type::Double)
                 }
             );
             assert_eq!(**return_type, Type::Int);
@@ -85,8 +85,8 @@ fn test_multi_param_function_type() {
 
 #[test]
 fn test_higher_order_function_type() {
-    // (float -> float) -> float
-    let code = "apply: (float -> float) -> float <- function(f: function): float { return(0.0) }";
+    // (double -> double) -> double
+    let code = "apply: (double -> double) -> double <- function(f: function): double { return(0.0) }";
     let stmts = parse_program(code);
 
     assert_eq!(stmts.len(), 1);
@@ -101,7 +101,7 @@ fn test_higher_order_function_type() {
         {
             assert_eq!(params.len(), 1);
 
-            // First param should be a function type (float -> float)
+            // First param should be a function type (double -> double)
             if let Param {
                 kind: ParamKind::Normal(Type::Function {
                     params: inner_params,
@@ -115,15 +115,15 @@ fn test_higher_order_function_type() {
                     inner_params[0],
                     Param {
                         name: String::new(),
-                        kind: ParamKind::Normal(Type::Float)
+                        kind: ParamKind::Normal(Type::Double)
                     }
                 );
-                assert_eq!(**inner_return, Type::Float);
+                assert_eq!(**inner_return, Type::Double);
             } else {
                 panic!("Expected first parameter to be Function type");
             }
 
-            assert_eq!(**return_type, Type::Float);
+            assert_eq!(**return_type, Type::Double);
         } else {
             panic!("Expected Function type");
         }
@@ -134,9 +134,9 @@ fn test_higher_order_function_type() {
 
 #[test]
 fn test_function_returning_function() {
-    // float -> (float -> float)
+    // double -> (double -> double)
     let code =
-        "make_adder: float -> (float -> float) <- function(x: float): function { return(0) }";
+        "make_adder: double -> (double -> double) <- function(x: double): function { return(0) }";
     let stmts = parse_program(code);
 
     assert_eq!(stmts.len(), 1);
@@ -154,11 +154,11 @@ fn test_function_returning_function() {
                 params[0],
                 Param {
                     name: String::new(),
-                    kind: ParamKind::Normal(Type::Float)
+                    kind: ParamKind::Normal(Type::Double)
                 }
             );
 
-            // Return type should be a function (float -> float)
+            // Return type should be a function (double -> double)
             if let Type::Function {
                 params: ret_params,
                 return_type: ret_return,
@@ -169,10 +169,10 @@ fn test_function_returning_function() {
                     ret_params[0],
                     Param {
                         name: String::new(),
-                        kind: ParamKind::Normal(Type::Float)
+                        kind: ParamKind::Normal(Type::Double)
                     }
                 );
-                assert_eq!(**ret_return, Type::Float);
+                assert_eq!(**ret_return, Type::Double);
             } else {
                 panic!("Expected return type to be Function");
             }

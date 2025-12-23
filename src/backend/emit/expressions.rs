@@ -1,6 +1,6 @@
 use crate::types::Type;
 use crate::ir::{IRExpr, IRExprKind};
-use wasm_encoder::{Function, HeapType, Ieee32, Ieee64, Instruction};
+use wasm_encoder::{Function, HeapType, Ieee64, Instruction};
 
 use super::super::{context::LocalContext, WasmGenerator};
 
@@ -387,11 +387,6 @@ impl WasmGenerator {
             &Type::Int => {
                 let num = numeric_string.parse::<i32>().unwrap();
                 func.instruction(&Instruction::I32Const(num))
-            }
-        ,
-            &Type::Float => {
-                let ie_num = Ieee32::from(numeric_string.parse::<f32>().unwrap());
-                func.instruction(&Instruction::F32Const(ie_num))
             }
             &Type::Double => {
                 let ie_num = Ieee64::from(numeric_string.parse::<f64>().unwrap());

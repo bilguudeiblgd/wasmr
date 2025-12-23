@@ -10,12 +10,10 @@ impl WasmGenerator {
         func: &mut Function,
         ty: &Type,
         i32_instr: Instruction,
-        f32_instr: Instruction,
         f64_instr: Instruction,
     ) {
         match ty {
             Type::Int => func.instruction(&i32_instr),
-            Type::Float => func.instruction(&f32_instr),
             Type::Double => func.instruction(&f64_instr),
             _ => func.instruction(&i32_instr), // fallback
         };
@@ -83,31 +81,31 @@ impl WasmGenerator {
 
         match op {
             BinaryOp::Plus => {
-                Self::emit_typed_instruction(func, ty, Instruction::I32Add, Instruction::F32Add, Instruction::F64Add);
+                Self::emit_typed_instruction(func, ty, Instruction::I32Add, Instruction::F64Add);
             }
             BinaryOp::Minus => {
-                Self::emit_typed_instruction(func, ty, Instruction::I32Sub, Instruction::F32Sub, Instruction::F64Sub);
+                Self::emit_typed_instruction(func, ty, Instruction::I32Sub, Instruction::F64Sub);
             }
             BinaryOp::Mul => {
-                Self::emit_typed_instruction(func, ty, Instruction::I32Mul, Instruction::F32Mul, Instruction::F64Mul);
+                Self::emit_typed_instruction(func, ty, Instruction::I32Mul, Instruction::F64Mul);
             }
             BinaryOp::Div => {
-                Self::emit_typed_instruction(func, ty, Instruction::I32DivS, Instruction::F32Div, Instruction::F64Div);
+                Self::emit_typed_instruction(func, ty, Instruction::I32DivS, Instruction::F64Div);
             }
             BinaryOp::Less => {
-                Self::emit_typed_instruction(func, ty, Instruction::I32LtS, Instruction::F32Lt, Instruction::F64Lt);
+                Self::emit_typed_instruction(func, ty, Instruction::I32LtS, Instruction::F64Lt);
             }
             BinaryOp::LessEqual => {
-                Self::emit_typed_instruction(func, ty, Instruction::I32LeS, Instruction::F32Le, Instruction::F64Le);
+                Self::emit_typed_instruction(func, ty, Instruction::I32LeS, Instruction::F64Le);
             }
             BinaryOp::Greater => {
-                Self::emit_typed_instruction(func, ty, Instruction::I32GtS, Instruction::F32Gt, Instruction::F64Gt);
+                Self::emit_typed_instruction(func, ty, Instruction::I32GtS, Instruction::F64Gt);
             }
             BinaryOp::GreaterEqual => {
-                Self::emit_typed_instruction(func, ty, Instruction::I32GeS, Instruction::F32Ge, Instruction::F64Ge);
+                Self::emit_typed_instruction(func, ty, Instruction::I32GeS, Instruction::F64Ge);
             }
             BinaryOp::Equality => {
-                Self::emit_typed_instruction(func, ty, Instruction::I32Eq, Instruction::F32Eq, Instruction::F64Eq);
+                Self::emit_typed_instruction(func, ty, Instruction::I32Eq, Instruction::F64Eq);
             }
             BinaryOp::Or => {
                 // booleans are represented as i32 0/1

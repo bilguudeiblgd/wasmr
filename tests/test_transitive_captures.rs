@@ -79,8 +79,6 @@ fn test_transitive_capture_propagation() {
         assert!(captured_x.is_mutable,
             "x should be mutable because h uses super-assignment");
 
-        println!("✓ Transitive capture working: g captures x for h");
-        println!("  Captured vars in g: {:?}",
             meta.captured_vars.iter().map(|c| &c.name).collect::<Vec<_>>());
     } else {
         panic!("g should be a function definition");

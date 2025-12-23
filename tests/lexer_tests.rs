@@ -322,12 +322,12 @@ fn super_assign_token() {
 #[test]
 fn arrow_token() {
     // Test -> token for function types
-    let code = "float -> float";
+    let code = "double -> double";
     let tokens = lex_str(code);
     let expected = vec![
-        Token::Type("float".into()),
+        Token::Type("double".into()),
         Token::Arrow,
-        Token::Type("float".into()),
+        Token::Type("double".into()),
         Token::EOF,
     ];
     assert_eq!(tokens, expected);

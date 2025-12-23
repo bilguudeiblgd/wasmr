@@ -367,7 +367,6 @@ impl Parser {
                     // Simple type without generics
                     match type_name.as_str() {
                         "int" => Ok(Type::Int),
-                        "float" => Ok(Type::Float),
                         "double" => Ok(Type::Double),
                         "string" => Ok(Type::String),
                         "char" => Ok(Type::Char),

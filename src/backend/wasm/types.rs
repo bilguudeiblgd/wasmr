@@ -7,7 +7,6 @@ impl WasmGenerator {
     pub(crate) fn wasm_valtype(&mut self, t: &Type) -> ValType {
         match t {
             Type::Int | Type::Logical | Type::Char => ValType::I32,
-            Type::Float => ValType::F32,
             Type::Double => ValType::F64,
             // For function types, check if it's a closure or bare function
             Type::Function { params, return_type } => {
@@ -66,7 +65,6 @@ impl WasmGenerator {
     pub(crate) fn storage_type_for(&self, ty: &Type) -> StorageType {
         match ty {
             Type::Int | Type::Logical | Type::Char | Type::String => StorageType::Val(ValType::I32),
-            Type::Float => StorageType::Val(ValType::F32),
             Type::Double => StorageType::Val(ValType::F64),
             Type::Vector(_) | Type::List | Type::VarArgs | Type::Any | Type::Function { .. } => {
                 StorageType::Val(ValType::Ref(RefType::ANYREF))
@@ -88,20 +86,6 @@ impl WasmGenerator {
                     }
                     self.type_count += 1;
                     self.array_type_i32 = Some(index);
-                    index
-                }
-            }
-            StorageType::Val(ValType::F32) => {
-                if let Some(idx) = self.array_type_f32 {
-                    idx
-                } else {
-                    let index = self.type_count;
-                    {
-                        let ty = self.types.ty();
-                        ty.array(storage, true);
-                    }
-                    self.type_count += 1;
-                    self.array_type_f32 = Some(index);
                     index
                 }
             }
@@ -146,7 +130,6 @@ impl WasmGenerator {
         // Determine which cached type to use based on inner type
         let cached_type = match inner_ty {
             Type::Int | Type::Logical | Type::Char | Type::String => &self.vector_struct_i32,
-            Type::Float => &self.vector_struct_f32,
             Type::Double => &self.vector_struct_f64,
             Type::Vector(_) | Type::List | Type::VarArgs | Type::Any | Type::Function { .. } => {
                 &self.vector_struct_anyref
@@ -189,9 +172,6 @@ impl WasmGenerator {
         match inner_ty {
             Type::Int | Type::Logical | Type::Char | Type::String => {
                 self.vector_struct_i32 = Some(index);
-            }
-            Type::Float => {
-                self.vector_struct_f32 = Some(index);
             }
             Type::Double => {
                 self.vector_struct_f64 = Some(index);

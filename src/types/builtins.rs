@@ -6,7 +6,7 @@ use super::Type;
 pub fn is_builtin_type_name(name: &str) -> bool {
     matches!(
         name,
-        "int" | "float" | "double" | "string" | "char"
+        "int" | "double" | "string" | "char"
         | "void" | "logical" | "any" | "vector" | "list"
     )
 }
@@ -16,7 +16,6 @@ pub fn is_builtin_type_name(name: &str) -> bool {
 pub fn map_builtin_type(name: &str) -> Option<Type> {
     match name {
         "int" => Some(Type::Int),
-        "float" => Some(Type::Float),
         "double" => Some(Type::Double),
         "string" => Some(Type::String),
         "vector" => Some(Type::Vector(Box::new(Type::Any))),

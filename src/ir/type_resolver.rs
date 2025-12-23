@@ -66,7 +66,7 @@ impl TypeResolver {
     }
 
     pub(crate) fn is_numeric(t: &Type) -> bool {
-        matches!(t, Type::Int | Type::Float | Type::Double)
+        matches!(t, Type::Int | Type::Double)
     }
 
     pub(crate) fn promote_numeric(&self, a: &Type, target: &Type) -> Type {
@@ -89,13 +89,11 @@ impl TypeResolver {
         }
         let rank = |t: &Type| match t {
             Int => 0,
-            Float => 1,
-            Double => 2,
+            Double => 1,
             _ => -1,
         };
         Ok(match (rank(l), rank(r)) {
-            (2, _) | (_, 2) => Double,
-            (1, _) | (_, 1) => Float,
+            (1, _) | (_, 1) => Double,
             _ => Int,
         })
     }

@@ -34,10 +34,6 @@ impl WasmGenerator {
                         .func_indices
                         .get("__int_to_string")
                         .expect("__int_to_string helper not found"),
-                    Type::Float => self
-                        .func_indices
-                        .get("__float_to_string")
-                        .expect("__float_to_string helper not found"),
                     Type::Double => self
                         .func_indices
                         .get("__double_to_string")
