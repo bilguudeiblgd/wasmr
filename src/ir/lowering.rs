@@ -292,6 +292,10 @@ impl<'a> LowerCtx<'a> {
                 kind: IRExprKind::XString(s),
                 ty: Type::String,
             }),
+            AstExpr::BoolLiteral(b) => Ok(IRExpr {
+                kind: IRExprKind::BoolLiteral(b),
+                ty: Type::Bool,
+            }),
             AstExpr::FunctionDef { .. } => Ok(IRExpr {
                 // We currently do not materialize function references at runtime; treat as a value of FunctionRef type.
                 kind: IRExprKind::Unit,

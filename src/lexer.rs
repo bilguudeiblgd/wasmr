@@ -173,6 +173,8 @@ impl Lexer {
                         "function" => tokens.push(Token::Function),
                         "return" => tokens.push(Token::Return),
                         "in" => tokens.push(Token::In),
+                        "TRUE" => tokens.push(Token::True),
+                        "FALSE" => tokens.push(Token::False),
                         // Treat built-in type names specially
                         _ => {
                             if is_builtin_type_name(&identifier_name) {

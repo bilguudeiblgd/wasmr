@@ -242,6 +242,14 @@ impl Parser {
                 self.advance();
                 Ok(Expr::XString(s))
             }
+            Some(Token::True) => {
+                self.advance();
+                Ok(Expr::BoolLiteral(true))
+            }
+            Some(Token::False) => {
+                self.advance();
+                Ok(Expr::BoolLiteral(false))
+            }
             Some(Token::LParen) => {
                 self.advance();
                 let expr = self.parse_expression()?;

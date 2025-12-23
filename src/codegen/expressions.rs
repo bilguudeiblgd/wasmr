@@ -11,6 +11,10 @@ impl WasmGenerator {
                 let v: i32 = n.parse().unwrap_or(0);
                 func.instruction(&Instruction::I32Const(v));
             }
+            IRExprKind::BoolLiteral(b) => {
+                // Booleans are represented as i32: 1 for true, 0 for false
+                func.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
+            }
             IRExprKind::Binary { left, op, right } => {
                 self.gen_binary_op(func, ctx, op, left, right)
             }

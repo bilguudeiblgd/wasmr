@@ -32,6 +32,7 @@ pub enum IRExprKind {
     Number(String),
     Identifier(String),
     XString(String),
+    BoolLiteral(bool),
     VectorLiteral(Vec<IRExpr>),
     Binary {
         left: Box<IRExpr>,

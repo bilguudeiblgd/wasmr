@@ -20,6 +20,7 @@ pub enum Expr {
     Number(String),
     Identifier(String),
     XString(String),
+    BoolLiteral(bool),
     /// Represents the `...` placeholder inside function bodies.
     VarArgs,
     // Anonymous function literal that evaluates to a reference to that function.
