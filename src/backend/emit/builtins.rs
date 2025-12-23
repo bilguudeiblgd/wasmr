@@ -42,6 +42,10 @@ impl WasmGenerator {
                         .func_indices
                         .get("__double_to_string")
                         .expect("__double_to_string helper not found"),
+                    Type::Logical => self
+                        .func_indices
+                        .get("__bool_to_string")
+                        .expect("__bool_to_string helper not found"),
                     _ => {
                         // Unsupported type - just drop and return
                         func.instruction(&Instruction::Drop);

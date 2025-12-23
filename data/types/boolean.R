@@ -1,7 +1,7 @@
-boolean_or <- function(a: bool, b: bool): bool {
+boolean_or <- function(a: logical, b: logical): logical {
     return (a | b)
 }
 
-boolean_and <- function(a: bool, b: bool): bool {
+boolean_and <- function(a: logical, b: logical): logical {
     return (a & b)
 }

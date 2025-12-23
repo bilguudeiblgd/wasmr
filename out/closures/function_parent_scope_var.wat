@@ -4,21 +4,22 @@
   (type (;2;) (func (param i32) (result i32 i32)))
   (type (;3;) (func (param f32) (result i32 i32)))
   (type (;4;) (func (param f64) (result i32 i32)))
-  (type (;5;) (array (mut i32)))
-  (type (;6;) (func (param (ref 5) (ref 5)) (result (ref 5))))
-  (type (;7;) (func))
+  (type (;5;) (func (param i32) (result i32 i32)))
+  (type (;6;) (array (mut i32)))
+  (type (;7;) (func (param (ref 6) (ref 6)) (result (ref 6))))
+  (type (;8;) (func))
   (rec
-    (type (;8;) (sub (func (param (ref 9) i32) (result i32))))
-    (type (;9;) (sub (struct (field (ref 8)))))
+    (type (;9;) (sub (func (param (ref 10) i32) (result i32))))
+    (type (;10;) (sub (struct (field (ref 9)))))
   )
-  (type (;10;) (sub 9 (struct (field (ref 8)) (field i32))))
-  (type (;11;) (func))
+  (type (;11;) (sub 10 (struct (field (ref 9)) (field i32))))
+  (type (;12;) (func))
   (import "wasi_snapshot_preview1" "fd_write" (func (;0;) (type 0)))
   (memory (;0;) 1)
-  (export "square_and_add_one" (func 7))
+  (export "square_and_add_one" (func 8))
   (export "memory" (memory 0))
-  (export "main" (func 6))
-  (export "_start" (func 8))
+  (export "main" (func 7))
+  (export "_start" (func 9))
   (func (;1;) (type 1) (param i32 i32)
     i32.const 1024
     local.get 0
@@ -214,13 +215,29 @@
     i32.const 3
     i32.add
   )
-  (func (;5;) (type 6) (param (ref 5) (ref 5)) (result (ref 5))
-    (local i32 i32 i32 (ref 5))
+  (func (;5;) (type 5) (param i32) (result i32 i32)
+    local.get 0
+    i32.eqz
+    if (result i32) ;; label = @1
+      i32.const 20
+    else
+      i32.const 16
+    end
+    local.get 0
+    i32.eqz
+    if (result i32) ;; label = @1
+      i32.const 5
+    else
+      i32.const 4
+    end
+  )
+  (func (;6;) (type 7) (param (ref 6) (ref 6)) (result (ref 6))
+    (local i32 i32 i32 (ref 6))
     local.get 0
     array.len
     local.set 3
     local.get 3
-    array.new_default 5
+    array.new_default 6
     local.set 5
     i32.const 0
     local.set 2
@@ -232,16 +249,16 @@
         br_if 1 (;@1;)
         local.get 0
         local.get 2
-        array.get 5
+        array.get 6
         local.get 1
         local.get 2
-        array.get 5
+        array.get 6
         i32.add
         local.set 4
         local.get 5
         local.get 2
         local.get 4
-        array.set 5
+        array.set 6
         local.get 2
         i32.const 1
         i32.add
@@ -251,15 +268,15 @@
     end
     local.get 5
   )
-  (func (;6;) (type 7)
+  (func (;7;) (type 8)
     (local i32 i32)
     i32.const 1
     local.set 0
-    ref.func 7
+    ref.func 8
     local.get 0
-    struct.new 10
+    struct.new 11
     i32.const 9
-    call 7
+    call 8
     local.set 1
     local.get 1
     call 2
@@ -271,20 +288,22 @@
     i32.const 1
     call 1
   )
-  (func (;7;) (type 8) (param (ref 9) i32) (result i32)
-    (local (ref 10))
+  (func (;8;) (type 9) (param (ref 10) i32) (result i32)
+    (local (ref 11))
     local.get 0
-    ref.cast (ref 10)
+    ref.cast (ref 11)
     local.set 2
     local.get 1
     local.get 1
     i32.mul
     local.get 2
-    struct.get 10 1
+    struct.get 11 1
     i32.add
     return
   )
-  (func (;8;) (type 11)
-    call 6
+  (func (;9;) (type 12)
+    call 7
   )
+  (data (;0;) (i32.const 16) "TRUE")
+  (data (;1;) (i32.const 20) "FALSE")
 )

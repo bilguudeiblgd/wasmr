@@ -19,7 +19,7 @@ pub fn mangle_type(ty: &Type) -> String {
         Type::Int => "int".to_string(),
         Type::Float => "float".to_string(),
         Type::Double => "double".to_string(),
-        Type::Bool => "bool".to_string(),
+        Type::Logical => "logical".to_string(),
         Type::Char => "char".to_string(),
         Type::String => "string".to_string(),
         Type::Vector(elem_ty) => {

@@ -34,5 +34,20 @@ impl WasmGenerator {
             shared: false,
             page_size_log2: None,
         });
+
+        // Initialize TRUE/FALSE strings in data section
+        // Offset 16-19: "TRUE" (4 bytes)
+        self.data.active(
+            0,  // memory index
+            &wasm_encoder::ConstExpr::i32_const(16),
+            b"TRUE".to_vec(),
+        );
+
+        // Offset 20-24: "FALSE" (5 bytes)
+        self.data.active(
+            0,  // memory index
+            &wasm_encoder::ConstExpr::i32_const(20),
+            b"FALSE".to_vec(),
+        );
     }
 }

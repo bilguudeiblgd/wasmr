@@ -13,7 +13,7 @@ pub enum Type {
     List,
     Char,
     Void,
-    Bool,
+    Logical,
     Any,
     Reference(Box<Type>),
     /// Internal type used to represent packed `...` values.

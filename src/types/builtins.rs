@@ -7,7 +7,7 @@ pub fn is_builtin_type_name(name: &str) -> bool {
     matches!(
         name,
         "int" | "float" | "double" | "string" | "char"
-        | "void" | "bool" | "any" | "vector" | "list"
+        | "void" | "logical" | "any" | "vector" | "list"
     )
 }
 
@@ -23,8 +23,7 @@ pub fn map_builtin_type(name: &str) -> Option<Type> {
         "list" => Some(Type::List),
         "char" => Some(Type::Char),
         "void" => Some(Type::Void),
-        // No Bool variant in Type enum; keep as None
-        "bool" => Some(Type::Bool),
+        "logical" => Some(Type::Logical),
         _ => None,
     }
 }

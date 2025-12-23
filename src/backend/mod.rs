@@ -419,13 +419,14 @@ impl WasmGenerator {
         // Export _start function
         self.exports.export("_start", ExportKind::Func, start_func_idx);
 
-        // Build module (order matters: types, imports, functions, memory, exports, code)
+        // Build module (order matters: types, imports, functions, memory, exports, code, data)
         self.module.section(&self.types);
         self.module.section(&self.imports);
         self.module.section(&self.functions);
         self.module.section(&self.memory);
         self.module.section(&self.exports);
         self.module.section(&self.code);
+        self.module.section(&self.data);
         self.module.clone().finish()
     }
 

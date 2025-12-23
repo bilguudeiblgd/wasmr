@@ -15,6 +15,7 @@ impl WasmGenerator {
         self.gen_int_to_string_helper();
         self.gen_float_to_string_helper();
         self.gen_double_to_string_helper();
+        self.gen_bool_to_string_helper();
 
         // Vector operation builtins
         let storage = StorageType::Val(ValType::I32);
@@ -506,6 +507,61 @@ impl WasmGenerator {
         func.instruction(&Instruction::LocalGet(len_local));
         func.instruction(&Instruction::I32Const(3)); // "." + 2 decimal digits
         func.instruction(&Instruction::I32Add);
+
+        func.instruction(&Instruction::End);
+        self.code.function(&func);
+    }
+
+    fn gen_bool_to_string_helper(&mut self) {
+        // Function signature: (val: i32) -> (ptr: i32, len: i32)
+        let type_idx = self.type_count;
+        self.types
+            .ty()
+            .function(vec![ValType::I32], vec![ValType::I32, ValType::I32]);
+        self.type_count += 1;
+
+        self.functions.function(type_idx as u32);
+        let func_idx = self.func_count;
+        self.func_indices
+            .insert("__bool_to_string".to_string(), func_idx);
+        self.func_count += 1;
+
+        // Memory layout:
+        // offset 16-19: "TRUE" (4 bytes)
+        // offset 20-24: "FALSE" (5 bytes)
+        const TRUE_OFFSET: i32 = 16;
+        const FALSE_OFFSET: i32 = 20;
+        const TRUE_LEN: i32 = 4;
+        const FALSE_LEN: i32 = 5;
+
+        let mut func = Function::new(vec![]);
+
+        let val_param = 0;
+
+        // if (val == 0) then "FALSE" else "TRUE"
+        // First, push the pointer
+        func.instruction(&Instruction::LocalGet(val_param));
+        func.instruction(&Instruction::I32Eqz); // Check if 0 (false)
+
+        func.instruction(&Instruction::If(wasm_encoder::BlockType::Result(ValType::I32)));
+        // False branch: return FALSE_OFFSET
+        func.instruction(&Instruction::I32Const(FALSE_OFFSET));
+        func.instruction(&Instruction::Else);
+        // True branch: return TRUE_OFFSET
+        func.instruction(&Instruction::I32Const(TRUE_OFFSET));
+        func.instruction(&Instruction::End);
+
+        // Now push the length based on the same condition
+        func.instruction(&Instruction::LocalGet(val_param));
+        func.instruction(&Instruction::I32Eqz);
+
+        func.instruction(&Instruction::If(wasm_encoder::BlockType::Result(ValType::I32)));
+        // False branch: return FALSE_LEN
+        func.instruction(&Instruction::I32Const(FALSE_LEN));
+        func.instruction(&Instruction::Else);
+        // True branch: return TRUE_LEN
+        func.instruction(&Instruction::I32Const(TRUE_LEN));
+        func.instruction(&Instruction::End);
 
         func.instruction(&Instruction::End);
         self.code.function(&func);

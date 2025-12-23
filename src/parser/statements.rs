@@ -372,7 +372,7 @@ impl Parser {
                         "string" => Ok(Type::String),
                         "char" => Ok(Type::Char),
                         "void" => Ok(Type::Void),
-                        "bool" => Ok(Type::Bool),
+                        "logical" => Ok(Type::Logical),
                         "any" => Ok(Type::Any),
                         _ => Err(ParseError::UnexpectedExplained(format!(
                             "Unknown type: {}",

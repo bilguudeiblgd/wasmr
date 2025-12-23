@@ -405,6 +405,11 @@ impl WasmGenerator {
                 let ie_num = Ieee64::from(numeric_string.parse::<f64>().unwrap());
                 func.instruction(&Instruction::F64Const(ie_num))
             }
+            &Type::Logical => {
+                // Boolean literals are represented as "0" (false) or "1" (true)
+                let num = numeric_string.parse::<i32>().unwrap();
+                func.instruction(&Instruction::I32Const(num))
+            }
             _ => panic!("Type checker should prevent non-numeric expressions"),
         };
     }

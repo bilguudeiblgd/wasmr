@@ -464,18 +464,18 @@ impl<'a> LowerCtx<'a> {
                                 op,
                                 right: Box::new(r),
                             },
-                            ty: Type::Bool,
+                            ty: Type::Logical,
                         })
                     }
                     BinaryOp::Or | BinaryOp::And => {
-                        if l.ty == Type::Bool && r.ty == Type::Bool {
+                        if l.ty == Type::Logical && r.ty == Type::Logical {
                             Ok(IRExpr {
                                 kind: IRExprKind::Binary {
                                     left: Box::new(l),
                                     op,
                                     right: Box::new(r),
                                 },
-                                ty: Type::Bool,
+                                ty: Type::Logical,
                             })
                         } else {
                             Err(TypeError::UnsupportedOperation {
@@ -695,10 +695,10 @@ impl<'a> LowerCtx<'a> {
                 // Lower condition
                 let cond_ir = self.lower_expr(*condition)?;
 
-                // Check condition is Bool
-                if cond_ir.ty != Type::Bool {
+                // Check condition is Logical
+                if cond_ir.ty != Type::Logical {
                     return Err(TypeError::TypeMismatch {
-                        expected: Type::Bool,
+                        expected: Type::Logical,
                         found: cond_ir.ty,
                         context: "if expression condition".to_string(),
                     });
@@ -737,7 +737,12 @@ impl<'a> LowerCtx<'a> {
                     ty: result_ty,
                 })
             },
-            Expr::Logical(_) => todo!()
+            Expr::Logical(val) => {
+                Ok(IRExpr {
+                    kind: IRExprKind::Number(if val { "1" } else { "0" }.to_string()),
+                    ty: Type::Logical,
+                })
+            }
         }
     }
 
@@ -845,12 +850,12 @@ impl<'a> LowerCtx<'a> {
                     });
                 }
 
-                // Accept Int, Float, or Double for printing
-                if !matches!(args[0].ty, Type::Int | Type::Float | Type::Double) {
+                // Accept Int, Float, Double, or Logical for printing
+                if !matches!(args[0].ty, Type::Int | Type::Float | Type::Double | Type::Logical) {
                     return Err(TypeError::TypeMismatch {
                         expected: Type::Int,
                         found: args[0].ty.clone(),
-                        context: format!("print argument (expected int, float, or double)"),
+                        context: format!("print argument (expected int, float, double, or logical)"),
                     });
                 }
 

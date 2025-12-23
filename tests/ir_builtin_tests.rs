@@ -164,7 +164,7 @@ fn lower_simple_if_without_else() {
             then_branch,
             else_branch,
         } => {
-            assert_eq!(condition.ty, Type::Bool);
+            assert_eq!(condition.ty, Type::Logical);
             assert_eq!(then_branch.len(), 1);
             match &then_branch[0] {
                 IRStmt::VarAssign { name, ty, .. } => {
@@ -196,7 +196,7 @@ fn lower_if_with_else() {
             then_branch,
             else_branch,
         } => {
-            assert_eq!(condition.ty, Type::Bool);
+            assert_eq!(condition.ty, Type::Logical);
             assert_eq!(then_branch.len(), 1);
             match &then_branch[0] {
                 IRStmt::VarAssign { name, ty, value, .. } => {
@@ -414,7 +414,7 @@ fn lower_while_loop() {
     match &get_main_body(&ir)[1] {
         IRStmt::While { condition, body } => {
             // Check condition is typed as Bool
-            assert_eq!(condition.ty, Type::Bool);
+            assert_eq!(condition.ty, Type::Logical);
 
             // Check the condition is a less-than comparison
             match &condition.kind {
