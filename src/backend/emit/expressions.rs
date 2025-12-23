@@ -126,8 +126,19 @@ impl WasmGenerator {
                 self.compile_builtin_call(func, ctx, builtin, args);
             }
             IRExprKind::Index { target, index } => {
-                // Generate target (leaves vector ref on stack)
+                // Generate target (leaves vector struct ref on stack)
                 self.gen_expr(func, ctx, target);
+
+                // Extract data field (field 0) from vector struct
+                let elem_ty = match &target.ty {
+                    Type::Vector(inner) => &**inner,
+                    _ => panic!("Type checker should prevent non-vector indexing"),
+                };
+                let vector_struct_index = self.ensure_vector_struct_type(elem_ty);
+                func.instruction(&Instruction::StructGet {
+                    struct_type_index: vector_struct_index,
+                    field_index: 0,  // data field
+                });
 
                 // Generate index (leaves 1-based i32 on stack)
                 self.gen_expr(func, ctx, index);
@@ -137,10 +148,6 @@ impl WasmGenerator {
                 func.instruction(&Instruction::I32Sub);
 
                 // Get array type index for element type
-                let elem_ty = match &target.ty {
-                    Type::Vector(inner) => &**inner,
-                    _ => panic!("Type checker should prevent non-vector indexing"),
-                };
                 let storage = self.storage_type_for(elem_ty);
                 let array_type_index = self.ensure_array_type(&storage);
 
@@ -194,17 +201,26 @@ impl WasmGenerator {
     }
 
     pub(crate) fn gen_vector_literal(&mut self, func: &mut Function, ctx: &LocalContext, vec: &Vec<IRExpr>) {
-        vec.iter().for_each(|e| self.gen_expr(func, ctx, e));
         let element_ty = match vec.iter().find(|a| !matches!(a.ty, Type::VarArgs)) {
             Some(expr) => &expr.ty,
             None => panic!("Vector literal must have at least one element"),
         };
         let storage = self.storage_type_for(element_ty);
         let array_type_index = self.ensure_array_type(&storage);
+
+        // Create the data array
+        vec.iter().for_each(|e| self.gen_expr(func, ctx, e));
         func.instruction(&Instruction::ArrayNewFixed {
             array_type_index,
             array_size: vec.len() as u32,
         });
+
+        // Push length
+        func.instruction(&Instruction::I32Const(vec.len() as i32));
+
+        // Create vector struct: (struct (field data (array)) (field length i32))
+        let vector_struct_index = self.ensure_vector_struct_type(element_ty);
+        func.instruction(&Instruction::StructNew(vector_struct_index));
     }
 
     pub(crate) fn gen_call(

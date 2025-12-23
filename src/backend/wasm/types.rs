@@ -1,5 +1,5 @@
 use crate::types::{Param, ParamKind, Type};
-use wasm_encoder::{HeapType, RefType, StorageType, ValType};
+use wasm_encoder::{FieldType, HeapType, RefType, StorageType, StructType, ValType};
 
 use super::super::WasmGenerator;
 
@@ -43,15 +43,12 @@ impl WasmGenerator {
                 ValType::Ref(RefType::ANYREF)
             }
             Type::Vector(inner_ty) => {
-                // Get the storage type for the inner type
-
-                let storage = self.storage_type_for(inner_ty);
-                // Ensure the array type exists and get its index
-                let array_type_idx = self.ensure_array_type(&storage);
-                // Return a concrete reference to that specific array type
+                // Vectors are now structs: (struct (field data (array T)) (field length i32))
+                let struct_type_idx = self.ensure_vector_struct_type(inner_ty);
+                // Return a concrete reference to that specific struct type
                 ValType::Ref(RefType {
                     nullable: false,
-                    heap_type: HeapType::Concrete(array_type_idx),
+                    heap_type: HeapType::Concrete(struct_type_idx),
                 })
             }
 
@@ -141,5 +138,72 @@ impl WasmGenerator {
                 self.ensure_array_type(&StorageType::Val(ValType::I32))
             }
         }
+    }
+
+    /// Creates or retrieves a vector struct type: (struct (field data (array T)) (field length i32))
+    /// This enables O(1) length access without calling array.len instruction
+    pub(crate) fn ensure_vector_struct_type(&mut self, inner_ty: &Type) -> u32 {
+        // Determine which cached type to use based on inner type
+        let cached_type = match inner_ty {
+            Type::Int | Type::Bool | Type::Char | Type::String => &self.vector_struct_i32,
+            Type::Float => &self.vector_struct_f32,
+            Type::Double => &self.vector_struct_f64,
+            Type::Vector(_) | Type::List | Type::VarArgs | Type::Any | Type::Function { .. } => {
+                &self.vector_struct_anyref
+            }
+            _ => &self.vector_struct_i32,
+        };
+
+        // Return cached type if it exists
+        if let Some(idx) = cached_type {
+            return *idx;
+        }
+
+        // Create the array type for the data field
+        let storage = self.storage_type_for(inner_ty);
+        let array_type_idx = self.ensure_array_type(&storage);
+
+        // Create vector struct type: (struct (field data (ref $array)) (field length i32))
+        let index = self.type_count;
+        {
+            let ty = self.types.ty();
+            ty.struct_([
+                // Field 0: data - array of elements
+                FieldType {
+                    element_type: StorageType::Val(ValType::Ref(RefType {
+                        nullable: false,
+                        heap_type: HeapType::Concrete(array_type_idx),
+                    })),
+                    mutable: false,
+                },
+                // Field 1: length - i32
+                FieldType {
+                    element_type: StorageType::Val(ValType::I32),
+                    mutable: false,
+                },
+            ]);
+        }
+        self.type_count += 1;
+
+        // Cache the type index
+        match inner_ty {
+            Type::Int | Type::Bool | Type::Char | Type::String => {
+                self.vector_struct_i32 = Some(index);
+            }
+            Type::Float => {
+                self.vector_struct_f32 = Some(index);
+            }
+            Type::Double => {
+                self.vector_struct_f64 = Some(index);
+            }
+            Type::Vector(_) | Type::List | Type::VarArgs | Type::Any | Type::Function { .. } => {
+                self.vector_struct_anyref = Some(index);
+            }
+            _ => {
+                self.vector_struct_i32 = Some(index);
+            }
+        }
+
+        index
     }
 }

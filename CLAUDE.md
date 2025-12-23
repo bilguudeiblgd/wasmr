@@ -20,9 +20,28 @@ cargo run
 ```
 This will compile each `.R` file to a corresponding `.wasm` file.
 
+
+### Run the generated assembly
+After cargo run, outputs are inside out folder. To run them, we use wasmtime, but it's important to note that we need to enable certain features
+```bash
+wasmtime -W gc=y -W function-references=y <path to wasm file>
+```
+This will compile each `.R` file to a corresponding `.wasm` file.
+
+
 ### Run tests
 ```bash
 cargo test
+```
+
+Also important to run our end-to-end tests:
+```bash
+./test.sh
+```
+
+Below code takes files from `data/` and runs them through the compiler to generate wasm, and takes in R data files from data_R and compares the output
+```bash
+./translate_and_test.sh
 ```
 
 ### Run specific test file

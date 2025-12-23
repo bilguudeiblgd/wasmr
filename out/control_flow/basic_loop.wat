@@ -8,7 +8,8 @@
   (type (;6;) (func (param (ref 5) (ref 5)) (result (ref 5))))
   (type (;7;) (func))
   (type (;8;) (func (result i32)))
-  (type (;9;) (func))
+  (type (;9;) (struct (field (ref 5)) (field i32)))
+  (type (;10;) (func))
   (import "wasi_snapshot_preview1" "fd_write" (func (;0;) (type 0)))
   (memory (;0;) 1)
   (export "basic_loop" (func 7))
@@ -262,7 +263,7 @@
     call 1
   )
   (func (;7;) (type 8) (result i32)
-    (local i32 i32 i32 (ref 5) i32)
+    (local i32 i32 i32 (ref 9) i32)
     i32.const 0
     local.set 0
     i32.const 1
@@ -271,15 +272,18 @@
     i32.const 4
     i32.const 5
     array.new_fixed 5 5
+    i32.const 5
+    struct.new 9
     local.set 3
     local.get 3
-    array.len
+    struct.get 9 1
     local.set 4
     i32.const 0
     local.set 2
     block ;; label = @1
       loop ;; label = @2
         local.get 3
+        struct.get 9 0
         local.get 2
         array.get 5
         local.set 1
@@ -299,7 +303,7 @@
     local.get 0
     return
   )
-  (func (;8;) (type 9)
+  (func (;8;) (type 10)
     call 6
   )
 )

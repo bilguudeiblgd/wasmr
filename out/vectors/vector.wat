@@ -7,8 +7,9 @@
   (type (;5;) (array (mut i32)))
   (type (;6;) (func (param (ref 5) (ref 5)) (result (ref 5))))
   (type (;7;) (func))
-  (type (;8;) (func (result (ref 5))))
-  (type (;9;) (func))
+  (type (;8;) (struct (field (ref 5)) (field i32)))
+  (type (;9;) (func (result (ref 8))))
+  (type (;10;) (func))
   (import "wasi_snapshot_preview1" "fd_write" (func (;0;) (type 0)))
   (memory (;0;) 1)
   (export "add_vec" (func 7))
@@ -248,17 +249,21 @@
     local.get 5
   )
   (func (;6;) (type 7))
-  (func (;7;) (type 8) (result (ref 5))
-    (local (ref 5) (ref 5) (ref 5))
+  (func (;7;) (type 9) (result (ref 8))
+    (local (ref 8) (ref 8) (ref 8))
     i32.const 1
     i32.const 2
     i32.const 3
     array.new_fixed 5 3
+    i32.const 3
+    struct.new 8
     local.set 0
     i32.const 4
     i32.const 5
     i32.const 6
     array.new_fixed 5 3
+    i32.const 3
+    struct.new 8
     local.set 1
     local.get 0
     local.get 1
@@ -267,7 +272,7 @@
     local.get 2
     return
   )
-  (func (;8;) (type 9)
+  (func (;8;) (type 10)
     call 6
   )
 )

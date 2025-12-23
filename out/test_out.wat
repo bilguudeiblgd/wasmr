@@ -246,15 +246,11 @@
     local.get 5
   )
   (func (;6;) (type 7)
-    i32.const 42
-    call 2
-    call 1
-    i32.const 12
-    i32.const 10
-    i32.store8
-    i32.const 12
+    (local i32)
     i32.const 1
-    call 1
+    i32.const 2
+    i32.add
+    local.set 0
   )
   (func (;7;) (type 8)
     call 6

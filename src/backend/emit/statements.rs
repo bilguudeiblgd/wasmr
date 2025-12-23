@@ -174,13 +174,17 @@ impl WasmGenerator {
                 let vector_local = ctx.get_local(&vector_local_name)
                     .expect("Vector local should have been collected");
 
-                // Generate the vector to iterate over
+                // Generate the vector struct to iterate over
                 self.gen_expr(func, ctx, iter_expr);
                 func.instruction(&Instruction::LocalSet(vector_local));
 
-                // Get the length of the vector
+                // Get the length of the vector from struct field 1
                 func.instruction(&Instruction::LocalGet(vector_local));
-                func.instruction(&Instruction::ArrayLen);
+                let vector_struct_index = self.ensure_vector_struct_type(&var_ty);
+                func.instruction(&Instruction::StructGet {
+                    struct_type_index: vector_struct_index,
+                    field_index: 1,  // length field
+                });
                 let total_iter_local = ctx.get_local("__for_len")
                     .expect("Length local should have been collected");
                 func.instruction(&Instruction::LocalSet(total_iter_local));
@@ -194,8 +198,12 @@ impl WasmGenerator {
                 // Loop
                 func.instruction(&Instruction::Loop(BlockType::Empty));
 
-                // Get current element from vector: vector[system_iter]
+                // Get current element from vector: extract data array (field 0), then index into it
                 func.instruction(&Instruction::LocalGet(vector_local));
+                func.instruction(&Instruction::StructGet {
+                    struct_type_index: vector_struct_index,
+                    field_index: 0,  // data field
+                });
                 func.instruction(&Instruction::LocalGet(system_iter));
                 func.instruction(&Instruction::ArrayGet(self.ensure_array_type(&self.storage_type_for(&var_ty))));
                 func.instruction(&Instruction::LocalSet(iter_object));
@@ -245,8 +253,20 @@ impl WasmGenerator {
                 func.instruction(&Instruction::End); // End block
             }
             Stmt::IndexAssign { target, index, value } => {
-                // Generate target (vector ref)
+                // Generate target (vector struct ref)
                 self.gen_expr(func, ctx, target);
+
+                // Extract data field (field 0) from vector struct
+                use crate::types::Type;
+                let elem_ty = match &target.ty {
+                    Type::Vector(inner) => &**inner,
+                    _ => panic!("Type checker should prevent non-vector indexing"),
+                };
+                let vector_struct_index = self.ensure_vector_struct_type(elem_ty);
+                func.instruction(&Instruction::StructGet {
+                    struct_type_index: vector_struct_index,
+                    field_index: 0,  // data field
+                });
 
                 // Generate index (1-based i32)
                 self.gen_expr(func, ctx, index);
@@ -259,11 +279,6 @@ impl WasmGenerator {
                 self.gen_expr(func, ctx, value);
 
                 // Get array type index
-                use crate::types::Type;
-                let elem_ty = match &target.ty {
-                    Type::Vector(inner) => &**inner,
-                    _ => panic!("Type checker should prevent non-vector indexing"),
-                };
                 let storage = self.storage_type_for(elem_ty);
                 let array_type_index = self.ensure_array_type(&storage);
 

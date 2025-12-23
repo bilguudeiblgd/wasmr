@@ -77,9 +77,29 @@ impl WasmGenerator {
 
                 // print() is void - no return value needed
             }
+            BuiltinKind::Length => {
+                // length() extracts the length field (field 1) from the vector struct
+                if args.len() != 1 {
+                    return;
+                }
+
+                // Generate the vector struct argument
+                self.gen_expr(func, ctx, &args[0]);
+
+                // Extract the length field (field 1) from the vector struct
+                use crate::types::Type;
+                let elem_ty = match &args[0].ty {
+                    Type::Vector(inner) => &**inner,
+                    _ => panic!("Type checker should ensure length() receives a vector"),
+                };
+                let vector_struct_index = self.ensure_vector_struct_type(elem_ty);
+                func.instruction(&Instruction::StructGet {
+                    struct_type_index: vector_struct_index,
+                    field_index: 1,  // length field
+                });
+            }
             BuiltinKind::C | BuiltinKind::List => {
-                // These are handled by creating vector literals
-                // Generate a vector from the arguments
+                // These are handled by creating vector struct: (struct (field data) (field length))
                 for arg in args {
                     self.gen_expr(func, ctx, arg);
                 }
@@ -87,10 +107,19 @@ impl WasmGenerator {
                     let element_ty = &args[0].ty;
                     let storage = self.storage_type_for(element_ty);
                     let array_type_index = self.ensure_array_type(&storage);
+
+                    // Create the data array
                     func.instruction(&Instruction::ArrayNewFixed {
                         array_type_index,
                         array_size: args.len() as u32,
                     });
+
+                    // Push length
+                    func.instruction(&Instruction::I32Const(args.len() as i32));
+
+                    // Create vector struct
+                    let vector_struct_index = self.ensure_vector_struct_type(element_ty);
+                    func.instruction(&Instruction::StructNew(vector_struct_index));
                 } else {
                     // Empty vector - push null reference
                     func.instruction(&Instruction::RefNull(HeapType::ANY));

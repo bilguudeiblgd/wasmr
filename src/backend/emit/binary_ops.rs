@@ -165,13 +165,23 @@ impl WasmGenerator {
             }
             _ => panic!("Range end must be a number")
         };
+
+        // Push all elements
         for i in start..(end + 1) {
             func.instruction(&Instruction::I32Const(i));
         }
+
+        // Create the data array
         let storage = self.storage_type_for(&Type::Int);
         let array_type_index = self.ensure_array_type(&storage);
         let array_size = (end - start + 1) as u32;
         func.instruction(&Instruction::ArrayNewFixed { array_type_index, array_size });
 
+        // Push length
+        func.instruction(&Instruction::I32Const(array_size as i32));
+
+        // Create vector struct: (struct (field data) (field length))
+        let vector_struct_index = self.ensure_vector_struct_type(&Type::Int);
+        func.instruction(&Instruction::StructNew(vector_struct_index));
     }
 }
