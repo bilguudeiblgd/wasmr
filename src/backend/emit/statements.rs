@@ -110,22 +110,51 @@ impl WasmGenerator {
             Stmt::FunctionDef { .. } => {
                 // handled at top-level
             }
-            Stmt::Block(stmts) => {
-                for s in stmts {
+            Stmt::Block(block) => {
+                // Generate statements
+                for s in &block.stmts {
                     self.gen_stmt(func, ctx, s, ret_has_value);
                 }
+                // Generate tail expression if present
+                if let Some(tail) = &block.tail_expr {
+                    self.gen_expr(func, ctx, tail);
+                    // If the block has a non-void tail expression but we don't need the value, drop it
+                    if !matches!(tail.ty, crate::types::Type::Void) && !ret_has_value {
+                        func.instruction(&Instruction::Drop);
+                    }
+                }
             },
-            Stmt::If { condition, then_branch, else_branch } => {
+            Stmt::If { condition, then_branch, else_branch, result_ty } => {
                 self.gen_expr(func, ctx, condition);
-                func.instruction(&Instruction::If(BlockType::Empty));
-                for stmt in then_branch {
+
+                // Determine if the if expression produces a value
+                let has_result = !matches!(result_ty, crate::types::Type::Void);
+                let block_type = if has_result {
+                    // Map result type to WASM block type
+                    BlockType::Result(self.wasm_valtype(result_ty))
+                } else {
+                    BlockType::Empty
+                };
+
+                func.instruction(&Instruction::If(block_type));
+
+                // Generate then branch
+                for stmt in &then_branch.stmts {
                     self.gen_stmt(func, ctx, stmt, ret_has_value);
                 }
+                // Generate tail expression if present
+                if let Some(tail) = &then_branch.tail_expr {
+                    self.gen_expr(func, ctx, tail);
+                }
 
-                if(else_branch.is_some()) {
+                if let Some(else_block) = else_branch {
                     func.instruction(&Instruction::Else);
-                    for stmt in else_branch.as_ref().unwrap() {
+                    for stmt in &else_block.stmts {
                         self.gen_stmt(func, ctx, stmt, ret_has_value);
+                    }
+                    // Generate tail expression if present
+                    if let Some(tail) = &else_block.tail_expr {
+                        self.gen_expr(func, ctx, tail);
                     }
                 }
                 func.instruction(&Instruction::End);
@@ -172,7 +201,7 @@ impl WasmGenerator {
                 func.instruction(&Instruction::LocalSet(iter_object));
 
                 // Execute loop body
-                for stmt in body {
+                for stmt in &body.stmts {
                     self.gen_stmt(func, ctx, stmt, ret_has_value);
                 }
 
@@ -205,7 +234,7 @@ impl WasmGenerator {
                 func.instruction(&Instruction::BrIf(1));
 
                 // Execute loop body
-                for stmt in body {
+                for stmt in &body.stmts {
                     self.gen_stmt(func, ctx, stmt, ret_has_value);
                 }
 

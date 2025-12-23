@@ -7,7 +7,7 @@ pub mod passes;
 
 // Re-export public types
 pub use types::{
-    BuiltinKind, IRExpr, IRExprKind, IRStmt, TypeError, TyResult,
+    BuiltinKind, IRExpr, IRExprKind, IRStmt, IRBlock, TypeError, TyResult,
     // New types for pass-based architecture
     IRProgram, FunctionMetadata, LocalVarInfo, VarOrigin, VarArgsInfo, CapturedVarInfo,
 };

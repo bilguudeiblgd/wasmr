@@ -1,7 +1,7 @@
 use crate::types::{Type, Param, ParamKind};
 use crate::types::Type::Vector;
-use crate::ast::{BinaryOp, Expr as AstExpr, Expr, Stmt as AstStmt, Stmt};
-use super::types::{BuiltinKind, IRExpr, IRExprKind, IRProgram, IRStmt, TyResult, TypeError};
+use crate::ast::{Block, BinaryOp, Expr as AstExpr, Expr, Stmt as AstStmt, Stmt};
+use super::types::{BuiltinKind, IRBlock, IRExpr, IRExprKind, IRProgram, IRStmt, TyResult, TypeError};
 use super::type_resolver::{TypeResolver, FunctionCtx, BuiltinDescriptor};
 
 /// Compare two types for compatibility, ignoring parameter names in function types
@@ -77,6 +77,30 @@ impl<'a> LowerCtx<'a> {
         Ok(out)
     }
 
+    /// Lower a Block (statements + optional tail expression) to IRBlock
+    fn lower_ast_block(&mut self, block: Block) -> TyResult<IRBlock> {
+        // Lower all statements
+        let mut stmts = Vec::with_capacity(block.stmts.len());
+        for s in block.stmts {
+            stmts.push(self.lower_stmt(s)?);
+        }
+
+        // Lower tail expression if present
+        let (tail_expr, ty) = if let Some(expr) = block.tail_expr {
+            let ir_expr = self.lower_expr(*expr)?;
+            let ty = ir_expr.ty.clone();
+            (Some(Box::new(ir_expr)), ty)
+        } else {
+            (None, Type::Void)
+        };
+
+        Ok(IRBlock {
+            stmts,
+            tail_expr,
+            ty,
+        })
+    }
+
     fn lower_stmt(&mut self, stmt: AstStmt) -> TyResult<IRStmt> {
         match stmt {
             AstStmt::ExprStmt(e) => {
@@ -138,7 +162,20 @@ impl<'a> LowerCtx<'a> {
                     });
 
                     // Lower body (can access parent function variables via scope stack)
-                    let body_ir = self.lower_block(body)?;
+                    let body_ir = self.lower_ast_block(body)?;
+
+                    // Check that block's tail expression type matches function return type
+                    // Only enforce this check if the function expects a non-Void return
+                    // AND the block has a tail expression (not relying on explicit returns)
+                    if ret_ty != Type::Void && body_ir.tail_expr.is_some() {
+                        if !types_compatible(&body_ir.ty, &ret_ty) {
+                            return Err(TypeError::TypeMismatch {
+                                expected: ret_ty.clone(),
+                                found: body_ir.ty.clone(),
+                                context: format!("function '{}' body", name),
+                            });
+                        }
+                    }
 
                     // Exit function scope
                     self.tr.exit_scope();
@@ -217,19 +254,41 @@ impl<'a> LowerCtx<'a> {
                 };
                 Ok(IRStmt::Return(ir_expr))
             }
-            AstStmt::Block(stmts) => {
-                let body = self.lower_block(stmts)?;
-                Ok(IRStmt::Block(body))
+            AstStmt::Block(block) => {
+                let ir_block = self.lower_ast_block(block)?;
+                Ok(IRStmt::Block(ir_block))
             }
             AstStmt::If {
                 condition,
                 then_branch,
                 else_branch,
             } => {
+                let cond_ir = self.lower_expr(condition)?;
+                let then_ir = self.lower_ast_block(then_branch)?;
+                let else_ir = else_branch.map(|b| self.lower_ast_block(b)).transpose()?;
+
+                // Determine the result type of the if expression
+                let result_ty = match &else_ir {
+                    Some(else_block) => {
+                        // Both branches exist - check if they have compatible types
+                        if types_compatible(&then_ir.ty, &else_block.ty) {
+                            then_ir.ty.clone()
+                        } else {
+                            // Branches have incompatible types - if expression is Void
+                            Type::Void
+                        }
+                    }
+                    None => {
+                        // No else branch - if expression is always Void
+                        Type::Void
+                    }
+                };
+
                 Ok(IRStmt::If {
-                    condition: self.lower_expr(condition)?,
-                    then_branch: self.lower_block(then_branch)?,
-                    else_branch: else_branch.map(|b| self.lower_block(b)).transpose()? ,
+                    condition: cond_ir,
+                    then_branch: then_ir,
+                    else_branch: else_ir,
+                    result_ty,
                 })
             },
 
@@ -243,10 +302,16 @@ impl<'a> LowerCtx<'a> {
                     let inner_ty = (*inner_box).clone();
                     // Loop iterator is function-scoped (visible throughout function)
                     self.tr.define_var(iter_name.clone(), *inner_ty.clone());
+                    // Lower the block (tail expression will be dropped or converted to ExprStmt during codegen)
+                    let mut body_block = self.lower_ast_block(body)?;
+                    // If there's a tail expression, convert it to an ExprStmt
+                    if let Some(tail) = body_block.tail_expr.take() {
+                        body_block.stmts.push(IRStmt::ExprStmt(*tail));
+                    }
                     return Ok(IRStmt::For {
                         iter_var: (iter_name, *inner_ty),
                         iter_expr,
-                        body: self.lower_block(body)?,
+                        body: body_block,
                     });
                 }
                 if matches!(&iter_expr.ty, Vector(some)) {
@@ -262,10 +327,15 @@ impl<'a> LowerCtx<'a> {
 
             AstStmt::While { condition, body } => {
                 let cond_ir = self.lower_expr(condition)?;
-                let body_ir = self.lower_block(body)?;
+                // Lower the block (tail expression will be dropped or converted to ExprStmt during codegen)
+                let mut body_block = self.lower_ast_block(body)?;
+                // If there's a tail expression, convert it to an ExprStmt
+                if let Some(tail) = body_block.tail_expr.take() {
+                    body_block.stmts.push(IRStmt::ExprStmt(*tail));
+                }
                 Ok(IRStmt::While {
                     condition: cond_ir,
-                    body: body_ir,
+                    body: body_block,
                 })
             }
             AstStmt::IndexAssign { target, index, value } => {
@@ -620,6 +690,52 @@ impl<'a> LowerCtx<'a> {
                         context: "only vectors can be indexed".to_string(),
                     }),
                 }
+            },
+            AstExpr::If { condition, then_branch, else_branch } => {
+                // Lower condition
+                let cond_ir = self.lower_expr(*condition)?;
+
+                // Check condition is Bool
+                if cond_ir.ty != Type::Bool {
+                    return Err(TypeError::TypeMismatch {
+                        expected: Type::Bool,
+                        found: cond_ir.ty,
+                        context: "if expression condition".to_string(),
+                    });
+                }
+
+                // Lower then branch
+                let then_ir = self.lower_ast_block(then_branch)?;
+
+                // Lower else branch if present
+                let (else_ir, result_ty) = if let Some(else_block) = else_branch {
+                    let else_ir = self.lower_ast_block(else_block)?;
+
+                    // Both branches exist - determine common type
+                    if types_compatible(&then_ir.ty, &else_ir.ty) {
+                        (Some(else_ir.clone()), then_ir.ty.clone())
+                    } else if types_compatible(&else_ir.ty, &then_ir.ty) {
+                        (Some(else_ir.clone()), else_ir.ty.clone())
+                    } else {
+                        return Err(TypeError::TypeMismatch {
+                            expected: then_ir.ty.clone(),
+                            found: else_ir.ty.clone(),
+                            context: "if expression branches must have compatible types".to_string(),
+                        });
+                    }
+                } else {
+                    // No else branch - defaults to Void
+                    (None, Type::Void)
+                };
+
+                Ok(IRExpr {
+                    kind: IRExprKind::If {
+                        condition: Box::new(cond_ir),
+                        then_branch: then_ir,
+                        else_branch: else_ir,
+                    },
+                    ty: result_ty,
+                })
             },
             Expr::Logical(_) => todo!()
         }

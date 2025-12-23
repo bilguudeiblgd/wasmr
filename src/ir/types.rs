@@ -1,6 +1,19 @@
 use crate::ast::BinaryOp;
 use crate::types::{Param, Type};
 
+/// A typed block of statements with an optional tail expression.
+/// The tail expression, if present, represents the value of the block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IRBlock {
+    /// Statements in the block
+    pub stmts: Vec<IRStmt>,
+    /// Optional tail expression (the value of the block)
+    /// If present, this is the last expression and determines the block's type
+    pub tail_expr: Option<Box<IRExpr>>,
+    /// The type of the block (either the tail_expr's type or Void if no tail)
+    pub ty: Type,
+}
+
 /// Top-level IR representation of a program
 ///
 /// Contains the main function and all flattened functions.
@@ -23,7 +36,11 @@ impl IRProgram {
                 name: "main".to_string(),
                 params: vec![],
                 return_type: Type::Void,
-                body: statements,
+                body: IRBlock {
+                    stmts: statements,
+                    tail_expr: None,
+                    ty: Type::Void,
+                },
                 metadata: None,
             },
             functions: vec![],
@@ -67,6 +84,12 @@ pub enum IRExprKind {
     VarArgs,
     /// Represents no value (used for void returns). Always has Type::Void.
     Unit,
+    /// If expression that evaluates to a value
+    If {
+        condition: Box<IRExpr>,
+        then_branch: IRBlock,
+        else_branch: Option<IRBlock>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -86,8 +109,11 @@ pub enum IRStmt {
     },
     If {
         condition: IRExpr,
-        then_branch: Vec<IRStmt>,
-        else_branch: Option<Vec<IRStmt>>,
+        then_branch: IRBlock,
+        else_branch: Option<IRBlock>,
+        /// The type of the if expression (if both branches exist and have same type)
+        /// Otherwise Type::Void
+        result_ty: Type,
     },
     /// Return always carries an expression. Use an `IRExpr { kind: Unit, ty: Type::Void }` for `return;`.
     Return(IRExpr),
@@ -95,7 +121,7 @@ pub enum IRStmt {
         name: String,
         params: Vec<Param>,
         return_type: Type,
-        body: Vec<IRStmt>,
+        body: IRBlock,
         /// Function metadata computed by IR passes
         /// Initially None, populated by variable collection pass
         metadata: Option<Box<FunctionMetadata>>,
@@ -103,18 +129,18 @@ pub enum IRStmt {
     For {
         iter_var: (String, Type),
         iter_expr: IRExpr,
-        body: Vec<IRStmt>,
+        body: IRBlock,
     },
     While {
         condition: IRExpr,
-        body: Vec<IRStmt>,
+        body: IRBlock,
     },
     IndexAssign {
         target: IRExpr,
         index: IRExpr,
         value: IRExpr,
     },
-    Block(Vec<IRStmt>),
+    Block(IRBlock),
 }
 
 /// Complete metadata about a function, computed during IR passes

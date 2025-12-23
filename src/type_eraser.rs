@@ -30,16 +30,28 @@ fn stmt_to_r(stmt: &Stmt, indent: usize) -> String {
             else_branch,
         } => {
             s.push_str(&format!("if ({}) {{\n", expr_to_r(condition)));
-            for stmt in then_branch {
+            for stmt in &then_branch.stmts {
                 s.push_str(&stmt_to_r(stmt, indent + 1));
+                s.push('\n');
+            }
+            // Add tail expression if present
+            if let Some(tail) = &then_branch.tail_expr {
+                s.push_str(&"    ".repeat(indent + 1));
+                s.push_str(&expr_to_r(tail));
                 s.push('\n');
             }
             s.push_str(&"    ".repeat(indent));
             s.push('}');
             if let Some(else_b) = else_branch {
                 s.push_str(" else {\n");
-                for stmt in else_b {
+                for stmt in &else_b.stmts {
                     s.push_str(&stmt_to_r(stmt, indent + 1));
+                    s.push('\n');
+                }
+                // Add tail expression if present
+                if let Some(tail) = &else_b.tail_expr {
+                    s.push_str(&"    ".repeat(indent + 1));
+                    s.push_str(&expr_to_r(tail));
                     s.push('\n');
                 }
                 s.push_str(&"    ".repeat(indent));
@@ -52,8 +64,14 @@ fn stmt_to_r(stmt: &Stmt, indent: usize) -> String {
             body,
         } => {
             s.push_str(&format!("for ({} in {}) {{\n", iter_name, expr_to_r(iter_vector)));
-            for stmt in body {
+            for stmt in &body.stmts {
                 s.push_str(&stmt_to_r(stmt, indent + 1));
+                s.push('\n');
+            }
+            // Add tail expression if present (though uncommon in loops)
+            if let Some(tail) = &body.tail_expr {
+                s.push_str(&"    ".repeat(indent + 1));
+                s.push_str(&expr_to_r(tail));
                 s.push('\n');
             }
             s.push_str(&"    ".repeat(indent));
@@ -61,8 +79,14 @@ fn stmt_to_r(stmt: &Stmt, indent: usize) -> String {
         }
         Stmt::While { condition, body } => {
             s.push_str(&format!("while ({}) {{\n", expr_to_r(condition)));
-            for stmt in body {
+            for stmt in &body.stmts {
                 s.push_str(&stmt_to_r(stmt, indent + 1));
+                s.push('\n');
+            }
+            // Add tail expression if present (though uncommon in loops)
+            if let Some(tail) = &body.tail_expr {
+                s.push_str(&"    ".repeat(indent + 1));
+                s.push_str(&expr_to_r(tail));
                 s.push('\n');
             }
             s.push_str(&"    ".repeat(indent));
@@ -88,10 +112,16 @@ fn stmt_to_r(stmt: &Stmt, indent: usize) -> String {
                 s.push_str("()");
             }
         }
-        Stmt::Block(stmts) => {
+        Stmt::Block(block) => {
             s.push_str("{\n");
-            for stmt in stmts {
+            for stmt in &block.stmts {
                 s.push_str(&stmt_to_r(stmt, indent + 1));
+                s.push('\n');
+            }
+            // Add tail expression if present
+            if let Some(tail) = &block.tail_expr {
+                s.push_str(&"    ".repeat(indent + 1));
+                s.push_str(&expr_to_r(tail));
                 s.push('\n');
             }
             s.push_str(&"    ".repeat(indent));
@@ -120,8 +150,14 @@ fn expr_to_r(expr: &Expr) -> String {
                 .collect();
             s.push_str(&param_strs.join(", "));
             s.push_str(") {\n");
-            for stmt in body {
+            for stmt in &body.stmts {
                 s.push_str(&stmt_to_r(stmt, 1));
+                s.push('\n');
+            }
+            // Add tail expression if present
+            if let Some(tail) = &body.tail_expr {
+                s.push_str(&"    ".repeat(1));
+                s.push_str(&expr_to_r(tail));
                 s.push('\n');
             }
             s.push('}');
@@ -152,5 +188,46 @@ fn expr_to_r(expr: &Expr) -> String {
             format!("{}[{}]", expr_to_r(target), expr_to_r(index))
         }
         Expr::Grouping(expr) => format!("({})", expr_to_r(expr)),
+        Expr::If { condition, then_branch, else_branch } => {
+            let mut s = format!("if ({}) ", expr_to_r(condition));
+
+            // If then_branch has only a tail expression and no statements, use single expression form
+            if then_branch.stmts.is_empty() && then_branch.tail_expr.is_some() {
+                s.push_str(&expr_to_r(then_branch.tail_expr.as_ref().unwrap()));
+            } else {
+                s.push_str("{\n");
+                for stmt in &then_branch.stmts {
+                    s.push_str(&stmt_to_r(stmt, 1));
+                    s.push('\n');
+                }
+                if let Some(tail) = &then_branch.tail_expr {
+                    s.push_str("    ");
+                    s.push_str(&expr_to_r(tail));
+                    s.push('\n');
+                }
+                s.push('}');
+            }
+
+            if let Some(else_b) = else_branch {
+                s.push_str(" else ");
+                // If else_branch has only a tail expression and no statements, use single expression form
+                if else_b.stmts.is_empty() && else_b.tail_expr.is_some() {
+                    s.push_str(&expr_to_r(else_b.tail_expr.as_ref().unwrap()));
+                } else {
+                    s.push_str("{\n");
+                    for stmt in &else_b.stmts {
+                        s.push_str(&stmt_to_r(stmt, 1));
+                        s.push('\n');
+                    }
+                    if let Some(tail) = &else_b.tail_expr {
+                        s.push_str("    ");
+                        s.push_str(&expr_to_r(tail));
+                        s.push('\n');
+                    }
+                    s.push('}');
+                }
+            }
+            s
+        }
     }
 }

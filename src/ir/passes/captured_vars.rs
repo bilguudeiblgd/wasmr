@@ -1,5 +1,5 @@
 use crate::types::{Param, ParamKind, Type};
-use crate::ir::{IRExpr, IRExprKind, IRProgram, IRStmt, Pass, PassError};
+use crate::ir::{IRBlock, IRExpr, IRExprKind, IRProgram, IRStmt, Pass, PassError};
 use crate::ir::types::{CapturedVarInfo, FunctionMetadata, LocalVarInfo};
 use std::collections::{HashMap, HashSet};
 
@@ -102,22 +102,22 @@ impl CapturedVarsPass {
                     }
                 }
                 IRStmt::If { then_branch, else_branch, .. } => {
-                    if self.is_function_returned(then_branch, func_name) {
+                    if self.is_function_returned(&then_branch.stmts, func_name) {
                         return true;
                     }
-                    if let Some(else_stmts) = else_branch {
-                        if self.is_function_returned(else_stmts, func_name) {
+                    if let Some(else_block) = else_branch {
+                        if self.is_function_returned(&else_block.stmts, func_name) {
                             return true;
                         }
                     }
                 }
                 IRStmt::For { body, .. } | IRStmt::While { body, .. } => {
-                    if self.is_function_returned(body, func_name) {
+                    if self.is_function_returned(&body.stmts, func_name) {
                         return true;
                     }
                 }
-                IRStmt::Block(body) => {
-                    if self.is_function_returned(body, func_name) {
+                IRStmt::Block(block) => {
+                    if self.is_function_returned(&block.stmts, func_name) {
                         return true;
                     }
                 }
@@ -158,20 +158,20 @@ impl CapturedVarsPass {
                     }
 
                     // Recursively collect from deeper nested functions
-                    let deeper_needs = self.collect_nested_function_needs(body);
+                    let deeper_needs = self.collect_nested_function_needs(&body.stmts);
                     needs.extend(deeper_needs);
                 }
                 IRStmt::If { then_branch, else_branch, .. } => {
-                    needs.extend(self.collect_nested_function_needs(then_branch));
-                    if let Some(else_stmts) = else_branch {
-                        needs.extend(self.collect_nested_function_needs(else_stmts));
+                    needs.extend(self.collect_nested_function_needs(&then_branch.stmts));
+                    if let Some(else_block) = else_branch {
+                        needs.extend(self.collect_nested_function_needs(&else_block.stmts));
                     }
                 }
                 IRStmt::For { body, .. } | IRStmt::While { body, .. } => {
-                    needs.extend(self.collect_nested_function_needs(body));
+                    needs.extend(self.collect_nested_function_needs(&body.stmts));
                 }
-                IRStmt::Block(stmts) => {
-                    needs.extend(self.collect_nested_function_needs(stmts));
+                IRStmt::Block(block) => {
+                    needs.extend(self.collect_nested_function_needs(&block.stmts));
                 }
                 _ => {}
             }
@@ -228,19 +228,19 @@ impl CapturedVarsPass {
                     }
 
                     // Recursively check deeper nested functions
-                    self.propagate_mutability_from_nested_functions(body, local_vars, captured_vars)?;
+                    self.propagate_mutability_from_nested_functions(&body.stmts, local_vars, captured_vars)?;
                 }
                 IRStmt::If { then_branch, else_branch, .. } => {
-                    self.propagate_mutability_from_nested_functions(then_branch, local_vars, captured_vars)?;
-                    if let Some(else_stmts) = else_branch {
-                        self.propagate_mutability_from_nested_functions(else_stmts, local_vars, captured_vars)?;
+                    self.propagate_mutability_from_nested_functions(&then_branch.stmts, local_vars, captured_vars)?;
+                    if let Some(else_block) = else_branch {
+                        self.propagate_mutability_from_nested_functions(&else_block.stmts, local_vars, captured_vars)?;
                     }
                 }
                 IRStmt::For { body, .. } | IRStmt::While { body, .. } => {
-                    self.propagate_mutability_from_nested_functions(body, local_vars, captured_vars)?;
+                    self.propagate_mutability_from_nested_functions(&body.stmts, local_vars, captured_vars)?;
                 }
-                IRStmt::Block(stmts) => {
-                    self.propagate_mutability_from_nested_functions(stmts, local_vars, captured_vars)?;
+                IRStmt::Block(block) => {
+                    self.propagate_mutability_from_nested_functions(&block.stmts, local_vars, captured_vars)?;
                 }
                 _ => {}
             }
@@ -258,15 +258,15 @@ impl CapturedVarsPass {
     /// This ensures transitive capture propagation works correctly.
     fn analyze_nested_functions(
         &mut self,
-        stmts: &mut [IRStmt],
+        block: &mut IRBlock,
         parent_vars: &HashMap<String, Type>,
         parent_metadata: &mut FunctionMetadata,
     ) -> Result<(), PassError> {
         // First pass: check which functions are returned
         let mut returned_functions = std::collections::HashSet::new();
-        for stmt in stmts.iter() {
+        for stmt in block.stmts.iter() {
             if let IRStmt::FunctionDef { name: func_name, .. } = stmt {
-                if self.is_function_returned(stmts, func_name) {
+                if self.is_function_returned(&block.stmts, func_name) {
                     returned_functions.insert(func_name.clone());
                 }
             }
@@ -277,7 +277,7 @@ impl CapturedVarsPass {
         // Phase 1: Recursively analyze deeper nested functions FIRST
         // This ensures nested functions have their captured_vars populated
         // before we try to compute transitive captures for parent functions
-        for stmt in stmts.iter_mut() {
+        for stmt in block.stmts.iter_mut() {
             match stmt {
                 IRStmt::FunctionDef { params, body, metadata, .. } => {
                     // Ensure metadata exists
@@ -316,8 +316,8 @@ impl CapturedVarsPass {
                 IRStmt::For { body, .. } | IRStmt::While { body, .. } => {
                     self.analyze_nested_functions(body, parent_vars, parent_metadata)?;
                 }
-                IRStmt::Block(stmts) => {
-                    self.analyze_nested_functions(stmts, parent_vars, parent_metadata)?;
+                IRStmt::Block(inner_block) => {
+                    self.analyze_nested_functions(inner_block, parent_vars, parent_metadata)?;
                 }
                 _ => {}
             }
@@ -326,7 +326,7 @@ impl CapturedVarsPass {
         // Phase 2: Now compute captures for current level functions
         // At this point, all nested functions have their captured_vars populated,
         // so collect_nested_function_needs will work correctly
-        for stmt in stmts.iter_mut() {
+        for stmt in block.stmts.iter_mut() {
             if let IRStmt::FunctionDef { params, body, metadata, .. } = stmt {
                 let func_metadata = metadata.as_mut().unwrap();
 
@@ -338,7 +338,7 @@ impl CapturedVarsPass {
 
                 // Compute this function's captures (including transitive captures)
                 let (mut captured_vars, super_assigned_vars, _transitive_needs) =
-                    self.find_captured_variables(params, body, &all_parent_vars)?;
+                    self.find_captured_variables(params, &body.stmts, &all_parent_vars)?;
 
                 // Mark variables that need references due to super-assignment
                 for var_name in &super_assigned_vars {
@@ -370,7 +370,7 @@ impl CapturedVarsPass {
                 // NEW: Propagate mutability from nested functions
                 // If a nested function has a mutable captured variable, we need to mark it in our scope
                 self.propagate_mutability_from_nested_functions(
-                    body,
+                    &body.stmts,
                     &mut func_metadata.local_vars,
                     &mut captured_vars,
                 )?;
@@ -400,19 +400,19 @@ impl CapturedVarsPass {
                 }
                 IRStmt::For { iter_var, body, .. } => {
                     locals.insert(iter_var.0.clone());
-                    self.collect_local_declarations(body, locals);
+                    self.collect_local_declarations(&body.stmts, locals);
                 }
                 IRStmt::If { then_branch, else_branch, .. } => {
-                    self.collect_local_declarations(then_branch, locals);
+                    self.collect_local_declarations(&then_branch.stmts, locals);
                     if let Some(else_body) = else_branch {
-                        self.collect_local_declarations(else_body, locals);
+                        self.collect_local_declarations(&else_body.stmts, locals);
                     }
                 }
                 IRStmt::While { body, .. } => {
-                    self.collect_local_declarations(body, locals);
+                    self.collect_local_declarations(&body.stmts, locals);
                 }
-                IRStmt::Block(stmts) => {
-                    self.collect_local_declarations(stmts, locals);
+                IRStmt::Block(block) => {
+                    self.collect_local_declarations(&block.stmts, locals);
                 }
                 IRStmt::ExprStmt(_) | IRStmt::Return(_) | IRStmt::IndexAssign { .. } => {}
             }
@@ -445,28 +445,28 @@ impl CapturedVarsPass {
                 IRStmt::Return(expr) => {
                     self.collect_references_from_expr(expr, refs);
                 }
-                IRStmt::If { condition, then_branch, else_branch } => {
+                IRStmt::If { condition, then_branch, else_branch, result_ty: _ } => {
                     self.collect_references_from_expr(condition, refs);
-                    self.collect_references_and_mutations(then_branch, refs, mutations);
+                    self.collect_references_and_mutations(&then_branch.stmts, refs, mutations);
                     if let Some(else_stmts) = else_branch {
-                        self.collect_references_and_mutations(else_stmts, refs, mutations);
+                        self.collect_references_and_mutations(&else_stmts.stmts, refs, mutations);
                     }
                 }
                 IRStmt::For { iter_expr, body, .. } => {
                     self.collect_references_from_expr(iter_expr, refs);
-                    self.collect_references_and_mutations(body, refs, mutations);
+                    self.collect_references_and_mutations(&body.stmts, refs, mutations);
                 }
                 IRStmt::While { condition, body } => {
                     self.collect_references_from_expr(condition, refs);
-                    self.collect_references_and_mutations(body, refs, mutations);
+                    self.collect_references_and_mutations(&body.stmts, refs, mutations);
                 }
                 IRStmt::IndexAssign { target, index, value } => {
                     self.collect_references_from_expr(target, refs);
                     self.collect_references_from_expr(index, refs);
                     self.collect_references_from_expr(value, refs);
                 }
-                IRStmt::Block(stmts) => {
-                    self.collect_references_and_mutations(stmts, refs, mutations);
+                IRStmt::Block(block) => {
+                    self.collect_references_and_mutations(&block.stmts, refs, mutations);
                 }
                 IRStmt::FunctionDef { .. } => {
                     // Skip - nested functions analyzed separately
@@ -505,6 +505,59 @@ impl CapturedVarsPass {
                     self.collect_references_from_expr(e, refs);
                 }
             }
+            IRExprKind::If { condition, then_branch, else_branch } => {
+                self.collect_references_from_expr(condition, refs);
+                // Collect from then_branch statements
+                for stmt in &then_branch.stmts {
+                    match stmt {
+                        IRStmt::VarAssign { value, .. } | IRStmt::ExprStmt(value) | IRStmt::Return(value) => {
+                            self.collect_references_from_expr(value, refs);
+                        }
+                        IRStmt::If { condition: cond, .. } => {
+                            self.collect_references_from_expr(cond, refs);
+                        }
+                        IRStmt::For { iter_expr, .. } | IRStmt::While { condition: iter_expr, .. } => {
+                            self.collect_references_from_expr(iter_expr, refs);
+                        }
+                        IRStmt::IndexAssign { target, index, value } => {
+                            self.collect_references_from_expr(target, refs);
+                            self.collect_references_from_expr(index, refs);
+                            self.collect_references_from_expr(value, refs);
+                        }
+                        _ => {}
+                    }
+                }
+                // Collect from then_branch tail expression
+                if let Some(tail) = &then_branch.tail_expr {
+                    self.collect_references_from_expr(tail, refs);
+                }
+                // Collect from else_branch if present
+                if let Some(else_block) = else_branch {
+                    for stmt in &else_block.stmts {
+                        match stmt {
+                            IRStmt::VarAssign { value, .. } | IRStmt::ExprStmt(value) | IRStmt::Return(value) => {
+                                self.collect_references_from_expr(value, refs);
+                            }
+                            IRStmt::If { condition: cond, .. } => {
+                                self.collect_references_from_expr(cond, refs);
+                            }
+                            IRStmt::For { iter_expr, .. } | IRStmt::While { condition: iter_expr, .. } => {
+                                self.collect_references_from_expr(iter_expr, refs);
+                            }
+                            IRStmt::IndexAssign { target, index, value } => {
+                                self.collect_references_from_expr(target, refs);
+                                self.collect_references_from_expr(index, refs);
+                                self.collect_references_from_expr(value, refs);
+                            }
+                            _ => {}
+                        }
+                    }
+                    // Collect from else_branch tail expression
+                    if let Some(tail) = &else_block.tail_expr {
+                        self.collect_references_from_expr(tail, refs);
+                    }
+                }
+            }
             IRExprKind::Number(_) | IRExprKind::XString(_) | IRExprKind::VarArgs | IRExprKind::Unit => {}
         }
     }
@@ -535,7 +588,7 @@ impl Pass for CapturedVarsPass {
             // If nested functions super-assign variables, mark them in main function's metadata
             let mut empty_captured_vars = Vec::new(); // Main doesn't capture anything (it's the top level)
             self.propagate_mutability_from_nested_functions(
-                body,
+                &body.stmts,
                 &mut metadata.local_vars,
                 &mut empty_captured_vars,
             )?;

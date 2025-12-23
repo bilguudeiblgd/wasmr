@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Stmt};
+use crate::ast::{Block, Expr, Stmt};
 use crate::types::{Param, ParamKind, Type};
 use crate::lexer::Token;
 
@@ -41,7 +41,11 @@ impl Parser {
             self.skip_newlines();
 
             if let Ok(embedded_if_statement) = self.parse_if_statement() {
-                else_branch = Some(vec![embedded_if_statement]);
+                // Wrap the embedded if statement in a block with no tail expression
+                else_branch = Some(Block {
+                    stmts: vec![embedded_if_statement],
+                    tail_expr: None,
+                });
             } else {
                 panic!("Error parsing embedded if statement");
             }
@@ -176,7 +180,7 @@ impl Parser {
         Ok(Stmt::ExprStmt(expr))
     }
 
-    pub(crate) fn parse_block_after_lbrace(&mut self) -> Result<Vec<Stmt>, ParseError> {
+    pub(crate) fn parse_block_after_lbrace(&mut self) -> Result<Block, ParseError> {
         let mut stmts = Vec::new();
         // skip any leading newlines inside the block
         self.skip_newlines();
@@ -193,7 +197,26 @@ impl Parser {
         // allow trailing newlines before closing brace
         self.skip_newlines();
         self.consume(&Token::RBrace)?;
-        Ok(stmts)
+
+        // Check if the last statement is an expression statement
+        // If so, treat it as a tail expression
+        let tail_expr = if let Some(last_stmt) = stmts.last() {
+            if let Stmt::ExprStmt(expr) = last_stmt {
+                let expr_clone = expr.clone();
+                // Remove the last statement and use it as tail expression
+                stmts.pop();
+                Some(Box::new(expr_clone))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(Block {
+            stmts,
+            tail_expr,
+        })
     }
 
     pub(crate) fn parse_assignment(&mut self) -> Result<Stmt, ParseError> {

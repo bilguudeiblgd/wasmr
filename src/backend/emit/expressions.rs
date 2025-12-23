@@ -150,6 +150,43 @@ impl WasmGenerator {
             IRExprKind::XString(_s) => {
                 func.instruction(&Instruction::I32Const(0));
             }
+            IRExprKind::If { condition, then_branch, else_branch } => {
+                // Generate condition
+                self.gen_expr(func, ctx, condition);
+
+                // Determine result type for WASM if instruction
+                let block_type = if expr.ty != Type::Void {
+                    wasm_encoder::BlockType::Result(self.wasm_valtype(&expr.ty))
+                } else {
+                    wasm_encoder::BlockType::Empty
+                };
+
+                // WASM if instruction with result type
+                func.instruction(&Instruction::If(block_type));
+
+                // Generate then branch
+                for stmt in &then_branch.stmts {
+                    self.gen_stmt(func, ctx, stmt, false);
+                }
+                // Generate tail expression if present
+                if let Some(tail) = &then_branch.tail_expr {
+                    self.gen_expr(func, ctx, tail);
+                }
+
+                // Generate else branch if present
+                if let Some(else_block) = else_branch {
+                    func.instruction(&Instruction::Else);
+                    for stmt in &else_block.stmts {
+                        self.gen_stmt(func, ctx, stmt, false);
+                    }
+                    // Generate tail expression if present
+                    if let Some(tail) = &else_block.tail_expr {
+                        self.gen_expr(func, ctx, tail);
+                    }
+                }
+
+                func.instruction(&Instruction::End);
+            }
             IRExprKind::Unit => {
                 // nothing to push for void; use 0 by convention if a value is required, handled by caller
             }

@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Expr};
+use crate::ast::{BinaryOp, Block, Expr};
 use crate::types::{Param, ParamKind, Type};
 use crate::lexer::Token;
 
@@ -257,8 +257,77 @@ impl Parser {
                 self.consume(&Token::RParen)?;
                 Ok(Expr::Grouping(Box::new(expr)))
             }
+            Some(Token::If) => {
+                self.advance(); // consume 'if'
+                self.parse_if_expr()
+            }
             Some(tok) => Err(ParseError::Unexpected(tok.clone())),
             None => Err(ParseError::Eof),
         }
+    }
+
+    fn parse_if_expr(&mut self) -> Result<Expr, ParseError> {
+        self.skip_newlines();
+        self.consume(&Token::LParen)?;
+        self.skip_newlines();
+        let condition = self.parse_expression()?;
+        self.skip_newlines();
+        self.consume(&Token::RParen)?;
+        self.skip_newlines();
+
+        // Parse then branch - can be single expression or block
+        let then_branch = if self.check(&Token::LBrace) {
+            self.consume(&Token::LBrace)?;
+            self.skip_newlines();
+            self.parse_block_after_lbrace()?
+        } else {
+            // Single expression without braces
+            let expr = self.parse_expression()?;
+            Block {
+                stmts: vec![],
+                tail_expr: Some(Box::new(expr)),
+            }
+        };
+
+        self.skip_newlines();
+
+        // Parse else branch (required for expressions)
+        let else_branch = if self.peek() == Some(&Token::Else) && self.peek_nth(1) == Some(&Token::If) {
+            self.consume(&Token::Else)?;
+            self.consume(&Token::If)?;
+            self.skip_newlines();
+
+            // Recursive if expression
+            let embedded_if = self.parse_if_expr()?;
+            Some(Block {
+                stmts: vec![],
+                tail_expr: Some(Box::new(embedded_if)),
+            })
+        } else if self.peek() == Some(&Token::Else) {
+            self.consume(&Token::Else)?;
+            self.skip_newlines();
+
+            if self.check(&Token::LBrace) {
+                self.consume(&Token::LBrace)?;
+                self.skip_newlines();
+                Some(self.parse_block_after_lbrace()?)
+            } else {
+                // Single expression without braces
+                let expr = self.parse_expression()?;
+                Some(Block {
+                    stmts: vec![],
+                    tail_expr: Some(Box::new(expr)),
+                })
+            }
+        } else {
+            // If expression without else - will default to void/unit
+            None
+        };
+
+        Ok(Expr::If {
+            condition: Box::new(condition),
+            then_branch,
+            else_branch,
+        })
     }
 }

@@ -1,5 +1,16 @@
 use crate::types::{Type, Param, ParamKind};
 
+/// A block of statements with an optional tail expression.
+/// The tail expression, if present, represents the value of the block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Block {
+    /// Statements in the block
+    pub stmts: Vec<Stmt>,
+    /// Optional tail expression (the value of the block)
+    /// If present, this is the last expression without a semicolon
+    pub tail_expr: Option<Box<Expr>>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 // #TODO: add more maths operations + functions.
 pub enum BinaryOp {
@@ -31,7 +42,7 @@ pub enum Expr {
     FunctionDef {
         params: Vec<Param>,
         return_type: Option<Type>,
-        body: Vec<Stmt>,
+        body: Block,
     },
     Binary {
         left: Box<Expr>,
@@ -47,6 +58,11 @@ pub enum Expr {
         index: Box<Expr>,
     },
     Grouping(Box<Expr>),
+    If {
+        condition: Box<Expr>,
+        then_branch: Block,
+        else_branch: Option<Block>,
+    },
 }
 
 // -------------------- Statements & Program --------------------
@@ -62,18 +78,18 @@ pub enum Stmt {
     },
     If {
         condition: Expr,
-        then_branch: Vec<Stmt>,
-        else_branch: Option<Vec<Stmt>>,
+        then_branch: Block,
+        else_branch: Option<Block>,
     },
     For {
         iter_name: String,
         // either range exp or vector exp
         iter_vector: Expr,
-        body: Vec<Stmt>,
+        body: Block,
     },
     While {
         condition: Expr,
-        body: Vec<Stmt>,
+        body: Block,
     },
     IndexAssign {
         target: Expr,
@@ -81,5 +97,5 @@ pub enum Stmt {
         value: Expr,
     },
     Return(Option<Expr>),
-    Block(Vec<Stmt>),
+    Block(Block),
 }

@@ -245,8 +245,17 @@ impl WasmGenerator {
         let ctx = LocalContext::from_metadata(&main_metadata);
 
         // Generate main function statements
-        for stmt in &main_body {
+        for stmt in &main_body.stmts {
             self.gen_stmt(&mut main_func, &ctx, stmt, ret_has_value);
+        }
+
+        // Generate tail expression if present
+        if let Some(tail) = &main_body.tail_expr {
+            self.gen_expr(&mut main_func, &ctx, tail);
+            // If there's no return value expected but tail produces one, drop it
+            if !ret_has_value && !matches!(tail.ty, crate::types::Type::Void) {
+                main_func.instruction(&Instruction::Drop);
+            }
         }
 
         main_func.instruction(&Instruction::End);
@@ -343,8 +352,17 @@ impl WasmGenerator {
                 }
 
                 // Generate function statements
-                for stmt in body {
+                for stmt in &body.stmts {
                     self.gen_stmt(&mut func, &ctx, stmt, ret_has_value);
+                }
+
+                // Generate tail expression if present
+                if let Some(tail) = &body.tail_expr {
+                    self.gen_expr(&mut func, &ctx, tail);
+                    // If there's no return value expected but tail produces one, drop it
+                    if !ret_has_value && !matches!(tail.ty, crate::types::Type::Void) {
+                        func.instruction(&Instruction::Drop);
+                    }
                 }
 
                 func.instruction(&Instruction::End);

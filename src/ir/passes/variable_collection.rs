@@ -25,7 +25,7 @@ impl VariableCollectionPass {
     fn collect_function_vars(
         &self,
         params: &[Param],
-        body: &mut [IRStmt],
+        body: &mut crate::ir::IRBlock,
     ) -> FunctionMetadata {
         let mut local_vars = Vec::new();
         let mut varargs_param = None;
@@ -62,8 +62,8 @@ impl VariableCollectionPass {
             seen.insert(param.name.clone());
         }
 
-        // Collect user variables and compiler temporaries
-        self.collect_vars_from_stmts(body, &mut local_vars, &mut next_index, &mut seen);
+        // Collect user variables and compiler temporaries from block statements
+        self.collect_vars_from_stmts(&mut body.stmts, &mut local_vars, &mut next_index, &mut seen);
 
         FunctionMetadata {
             local_vars: local_vars.clone(),
@@ -180,21 +180,23 @@ impl VariableCollectionPass {
                 }
 
                 // Recursively collect from loop body
-                self.collect_vars_from_stmts(body, vars, next_index, seen);
+                self.collect_vars_from_stmts(&mut body.stmts, vars, next_index, seen);
             }
 
-            IRStmt::Block(stmts) => {
-                self.collect_vars_from_stmts(stmts, vars, next_index, seen);
+            IRStmt::Block(block) => {
+                self.collect_vars_from_stmts(&mut block.stmts, vars, next_index, seen);
+                // Also check the tail expression (doesn't declare vars but might use them)
             }
 
             IRStmt::If {
                 condition: _,
                 then_branch,
                 else_branch,
+                result_ty: _,
             } => {
-                self.collect_vars_from_stmts(then_branch, vars, next_index, seen);
-                if let Some(else_stmts) = else_branch {
-                    self.collect_vars_from_stmts(else_stmts, vars, next_index, seen);
+                self.collect_vars_from_stmts(&mut then_branch.stmts, vars, next_index, seen);
+                if let Some(else_block) = else_branch {
+                    self.collect_vars_from_stmts(&mut else_block.stmts, vars, next_index, seen);
                 }
             }
 
@@ -221,7 +223,7 @@ impl VariableCollectionPass {
             }
 
             IRStmt::While { condition: _, body } => {
-                self.collect_vars_from_stmts(body, vars, next_index, seen);
+                self.collect_vars_from_stmts(&mut body.stmts, vars, next_index, seen);
             }
         }
     }
