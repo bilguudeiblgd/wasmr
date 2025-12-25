@@ -17,7 +17,6 @@ use crate::types::{Type, ParamKind};
 pub fn mangle_type(ty: &Type) -> String {
     match ty {
         Type::Int => "int".to_string(),
-        Type::Float => "float".to_string(),
         Type::Double => "double".to_string(),
         Type::Logical => "logical".to_string(),
         Type::Char => "char".to_string(),
@@ -73,7 +72,6 @@ mod tests {
     #[test]
     fn test_mangle_scalar_types() {
         assert_eq!(mangle_type(&Type::Int), "int");
-        assert_eq!(mangle_type(&Type::Float), "float");
         assert_eq!(mangle_type(&Type::Double), "double");
     }
 
@@ -99,5 +97,14 @@ mod tests {
             &[Type::Vector(Box::new(Type::Double)), Type::Double],
         );
         assert_eq!(name2, "system_vector_add___vec_double__double");
+    }
+
+    #[test]
+    fn test_mangle_function_name_my() {
+        let name = mangle_function_name(
+            "seq",
+            &[Type::Int, Type::Int, Type::Int],
+        );
+        assert_eq!(name, "");
     }
 }

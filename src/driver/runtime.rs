@@ -16,7 +16,7 @@ use crate::parser::Parser;
 /// Returns AST statements containing all runtime function definitions,
 /// or None if the directory doesn't exist or no valid files were found.
 pub fn load_runtime_ast() -> Option<Vec<crate::ast::Stmt>> {
-    let runtime_dir = Path::new("../../runtime_embed");
+    let runtime_dir = Path::new("runtime_embed");
 
     if !runtime_dir.exists() {
         eprintln!("Warning: runtime_embed directory not found");

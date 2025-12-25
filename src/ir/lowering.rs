@@ -647,6 +647,21 @@ impl<'a> LowerCtx<'a> {
                 }
             }
             AstExpr::Binary { left, op, right } => {
+                // Special case: desugar seq operator (from:to) into function call
+                // This allows dynamic ranges to work by calling the runtime function
+                if matches!(op, BinaryOp::Seq) {
+                    // Desugar: from:to  →  system_seq___int___int___int(from, to, 1)
+                    let seq_call = AstExpr::Call {
+                        callee: Box::new(AstExpr::Identifier("system_seq___int___int___int".to_string())),
+                        args: vec![
+                            Argument::Positional(*left),
+                            Argument::Positional(*right),
+                            Argument::Positional(AstExpr::Number("1".to_string())), // by = 1
+                        ],
+                    };
+                    return self.lower_expr(seq_call);
+                }
+
                 let l = self.lower_expr(*left)?;
                 let r = self.lower_expr(*right)?;
                 match op {
@@ -709,28 +724,10 @@ impl<'a> LowerCtx<'a> {
                         }
                     }
                     BinaryOp::Seq => {
-                        if l.ty == Type::Int && r.ty == Type::Int {
-                            Ok(IRExpr {
-                                kind: IRExprKind::Binary {
-                                    left: Box::new(l),
-                                    op,
-                                    right: Box::new(r),
-                                },
-                                ty: Vector(Type::Int.into()),
-                            })
-                        } else {
-                            Err(TypeError::UnsupportedOperation {
-                                op: format!("{:?}", op),
-                                left: l.ty,
-                                right: r.ty,
-                            })
-                        }
+                        // This case is handled above by desugaring into a function call
+                        // We should never reach here
+                        unreachable!("BinaryOp::Seq should be desugared before lowering")
                     }
-                    // _ => Err(TypeError::UnsupportedOperation {
-                    //     op: format!("{:?}", op),
-                    //     left: l.ty,
-                    //     right: r.ty,
-                    // }),
                 }
             }
             AstExpr::Call { callee, args } => match *callee {

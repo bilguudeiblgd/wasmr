@@ -72,7 +72,7 @@ impl TypeResolver {
             "vec".to_string(),
             BuiltinDescriptor {
                 kind: BuiltinKind::Vector,
-                return_type: Type::Vector(Type::Int.into()),
+                return_type: Type::Vector(Type::Double.into()),
             }
         );
 

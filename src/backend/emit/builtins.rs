@@ -150,15 +150,15 @@ impl WasmGenerator {
                     return;
                 }
 
-                // vec() returns Vector(Int) by default
+                // vec() returns Vector(Double) by default
                 use crate::types::Type;
-                let elem_ty = Type::Int;
+                let elem_ty = Type::Double;
 
                 // Get the vector struct type index
                 let vector_struct_idx = self.ensure_vector_struct_type(&elem_ty);
 
                 // Get the array type index for the data field
-                let storage = StorageType::Val(ValType::I32);
+                let storage = StorageType::Val(ValType::F64);
                 let array_type_idx = self.ensure_array_type(&storage);
 
                 // Step 1: Evaluate length and create the array
