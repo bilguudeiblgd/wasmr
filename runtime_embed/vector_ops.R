@@ -16,7 +16,7 @@ system_vector_add___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     }
 
     result_len <- max(n, m)
-    result: vector<int> <- vec(length=result_len)
+    result: vector<int> <- vec(length=result_len, mode="int")
 
     for(i in 1:result_len) {
         a_idx <- ((i - 1) %% n) + 1
@@ -36,7 +36,7 @@ system_vector_add___vec_double__vec_double <- function(a: vector<double>, b: vec
     }
 
     result_len <- max(n, m)
-    result: vector<double> <- vec(length=result_len)
+    result: vector<double> <- vec(length=result_len, mode="double")
 
     for(i in 1:result_len) {
         a_idx <- ((i - 1) %% n) + 1
@@ -88,7 +88,7 @@ system_vector_sub___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     }
 
     result_len <- max(n, m)
-    result: vector<int> <- vec(length=result_len)
+    result: vector<int> <- vec(length=result_len, mode="int")
 
     for(i in 1:result_len) {
         a_idx <- ((i - 1) %% n) + 1
@@ -108,7 +108,7 @@ system_vector_sub___vec_double__vec_double <- function(a: vector<double>, b: vec
     }
 
     result_len <- max(n, m)
-    result: vector<double> <- vec(length=result_len)
+    result: vector<double> <- vec(length=result_len, mode="double")
 
     for(i in 1:result_len) {
         a_idx <- ((i - 1) %% n) + 1
@@ -132,7 +132,7 @@ system_vector_mul___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     }
 
     result_len <- max(n, m)
-    result: vector<int> <- vec(length=result_len)
+    result: vector<int> <- vec(length=result_len, mode="int")
 
     for(i in 1:result_len) {
         a_idx <- ((i - 1) %% n) + 1
@@ -152,7 +152,7 @@ system_vector_mul___vec_double__vec_double <- function(a: vector<double>, b: vec
     }
 
     result_len <- max(n, m)
-    result: vector<double> <- vec(length=result_len)
+    result: vector<double> <- vec(length=result_len, mode="double")
 
     for(i in 1:result_len) {
         a_idx <- ((i - 1) %% n) + 1
@@ -176,7 +176,7 @@ system_vector_div___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     }
 
     result_len <- max(n, m)
-    result: vector<int> <- vec(length=result_len)
+    result: vector<int> <- vec(length=result_len, mode="int")
 
     for(i in 1:result_len) {
         a_idx <- ((i - 1) %% n) + 1
@@ -197,7 +197,7 @@ system_vector_div___vec_double__vec_double <- function(a: vector<double>, b: vec
     }
 
     result_len <- max(n, m)
-    result: vector<double> <- vec(length=result_len)
+    result: vector<double> <- vec(length=result_len, mode="double")
 
     for(i in 1:result_len) {
         a_idx <- ((i - 1) %% n) + 1
@@ -210,22 +210,3 @@ system_vector_div___vec_double__vec_double <- function(a: vector<double>, b: vec
 # ============================================================================
 # UTILITY functions
 # ============================================================================
-
-# Sum of vector<int>
-system_vector_sum___vec_int <- function(a: vector<int>): int {
-    sum <- 0
-    for(i in a) {
-        sum <- sum + i
-    }
-    return(sum)
-}
-
-
-# Sum of vector<double>
-system_vector_sum___vec_double <- function(a: vector<double>): double {
-    sum <- 0.0
-    for(i in a) {
-        sum <- sum + i
-    }
-    return(sum)
-}

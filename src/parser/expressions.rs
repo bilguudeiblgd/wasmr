@@ -194,6 +194,22 @@ impl Parser {
             });
         }
 
+        if self.match_token(&Token::Minus) {
+            let operand = self.parse_unary()?; // Allow chaining: --x
+            return Ok(Expr::Unary {
+                op: UnaryOp::Minus,
+                operand: Box::new(operand),
+            });
+        }
+
+        if self.match_token(&Token::Plus) {
+            let operand = self.parse_unary()?; // Allow chaining: ++x
+            return Ok(Expr::Unary {
+                op: UnaryOp::Plus,
+                operand: Box::new(operand),
+            });
+        }
+
         // No unary operator, parse primary
         self.parse_primary()
     }

@@ -79,16 +79,25 @@ impl TypeResolver {
         let mut function_param_defs = HashMap::new();
 
         // Register parameter definitions for vec() built-in
-        // vec(length: int = 0) creates a vector of given length
+        // vec(length: int = 0, mode: string = "double") creates a vector of given length
         function_param_defs.insert(
             "vec".to_string(),
-            vec![crate::ast::ParamDef {
-                param: Param {
-                    name: "length".to_string(),
-                    kind: ParamKind::Normal(Type::Int),
+            vec![
+                crate::ast::ParamDef {
+                    param: Param {
+                        name: "length".to_string(),
+                        kind: ParamKind::Normal(Type::Int),
+                    },
+                    default_value: Some(Box::new(crate::ast::Expr::Number("0".to_string()))),
                 },
-                default_value: Some(Box::new(crate::ast::Expr::Number("0".to_string()))),
-            }],
+                crate::ast::ParamDef {
+                    param: Param {
+                        name: "mode".to_string(),
+                        kind: ParamKind::Normal(Type::String),
+                    },
+                    default_value: Some(Box::new(crate::ast::Expr::XString("double".to_string()))),
+                },
+            ],
         );
 
         Self {

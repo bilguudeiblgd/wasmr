@@ -326,7 +326,7 @@ impl<'a> LowerCtx<'a> {
                     });
 
                     // Lower body (can access parent function variables via scope stack)
-                    let body_ir = self.lower_ast_block(body)?;
+                    let mut body_ir = self.lower_ast_block(body)?;
 
                     // Infer return type from body if not explicitly declared
                     let final_ret_ty = if let Some(explicit_ty) = declared_ret_ty {
@@ -350,6 +350,19 @@ impl<'a> LowerCtx<'a> {
                             Type::Void
                         }
                     };
+
+                    // Convert tail expression to explicit Return statement (or ExprStmt for void)
+                    if let Some(tail) = body_ir.tail_expr.take() {
+                        if final_ret_ty != Type::Void {
+                            // Non-void return: wrap tail in Return statement
+                            body_ir.stmts.push(IRStmt::Return(*tail));
+                        } else {
+                            // Void return: convert tail to ExprStmt if it produces a value
+                            if tail.ty != Type::Void {
+                                body_ir.stmts.push(IRStmt::ExprStmt(*tail));
+                            }
+                        }
+                    }
 
                     // Exit function scope
                     self.tr.exit_scope();
@@ -643,6 +656,44 @@ impl<'a> LowerCtx<'a> {
                             },
                             ty: Type::Logical,
                         })
+                    }
+                    UnaryOp::Minus => {
+                        // Unary minus works on numeric types
+                        match &operand_ir.ty {
+                            Type::Int | Type::Double => {
+                                Ok(IRExpr {
+                                    kind: IRExprKind::Unary {
+                                        op,
+                                        operand: Box::new(operand_ir.clone()),
+                                    },
+                                    ty: operand_ir.ty.clone(),
+                                })
+                            }
+                            _ => Err(TypeError::TypeMismatch {
+                                expected: Type::Int, // Or Double
+                                found: operand_ir.ty,
+                                context: "unary minus operator".to_string(),
+                            }),
+                        }
+                    }
+                    UnaryOp::Plus => {
+                        // Unary plus works on numeric types (essentially a no-op)
+                        match &operand_ir.ty {
+                            Type::Int | Type::Double => {
+                                Ok(IRExpr {
+                                    kind: IRExprKind::Unary {
+                                        op,
+                                        operand: Box::new(operand_ir.clone()),
+                                    },
+                                    ty: operand_ir.ty.clone(),
+                                })
+                            }
+                            _ => Err(TypeError::TypeMismatch {
+                                expected: Type::Int, // Or Double
+                                found: operand_ir.ty,
+                                context: "unary plus operator".to_string(),
+                            }),
+                        }
                     }
                 }
             }
@@ -1193,11 +1244,11 @@ impl<'a> LowerCtx<'a> {
                 })
             }
             BuiltinKind::Vector => {
-                // vec(length: int) creates a vector of given length
-                if args.len() != 1 {
+                // vec(length: int, mode: string) creates a vector of given length and type
+                if args.len() != 2 {
                     return Err(TypeError::ArityMismatch {
                         func: name.to_string(),
-                        expected: 1,
+                        expected: 2,
                         found: args.len(),
                     });
                 }
@@ -1211,12 +1262,50 @@ impl<'a> LowerCtx<'a> {
                     });
                 }
 
+                // Check that mode argument is a string literal
+                if !matches!(args[1].ty, Type::String) {
+                    return Err(TypeError::TypeMismatch {
+                        expected: Type::String,
+                        found: args[1].ty.clone(),
+                        context: format!("vec() mode parameter"),
+                    });
+                }
+
+                // Extract mode string literal to determine vector type
+                let mode_str = match &args[1].kind {
+                    IRExprKind::XString(s) => s.as_str(),
+                    _ => {
+                        return Err(TypeError::ArgumentError {
+                            func: name.to_string(),
+                            message: "vec() mode parameter must be a string literal".to_string(),
+                        });
+                    }
+                };
+
+                // Map mode string to Type
+                let element_type = match mode_str {
+                    "logical" => Type::Logical,
+                    "int" | "integer" => Type::Int,
+                    "double" | "numeric" => Type::Double,
+                    _ => {
+                        return Err(TypeError::ArgumentError {
+                            func: name.to_string(),
+                            message: format!(
+                                "vec() mode must be 'logical', 'int', or 'double', got '{}'",
+                                mode_str
+                            ),
+                        });
+                    }
+                };
+
+                let vector_type = Type::Vector(Box::new(element_type));
+
                 Ok(IRExpr {
                     kind: IRExprKind::BuiltinCall {
                         builtin: kind,
                         args,
                     },
-                    ty: return_ty,
+                    ty: vector_type,
                 })
             }
         }

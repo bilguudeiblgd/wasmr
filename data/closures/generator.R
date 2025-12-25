@@ -6,14 +6,14 @@ my_generator <- function(s: int, e: int, step: int) {
             return(current)
         }
         else {
-            return(NULL)
+            return(-1)
         }
 
     }
 }
 
 m <- my_generator(1, 10, 1)
-m()
-m()
-m()
-m()
+print(m())
+print(m())
+print(m())
+print(m())

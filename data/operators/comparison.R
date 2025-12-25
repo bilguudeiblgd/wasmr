@@ -6,3 +6,4 @@ le <- 3 <= 4
 
 # Comparison with a range expression
 small <- 1:3 < 10
+print(sum(small))

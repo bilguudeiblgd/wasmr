@@ -1,1 +1,6 @@
-print(1)
+
+mb <- function() {
+    2
+}
+
+print(mb())

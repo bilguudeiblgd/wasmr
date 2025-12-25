@@ -167,6 +167,8 @@ fn expr_to_r(expr: &Expr) -> String {
             use crate::ast::UnaryOp;
             let op_str = match op {
                 UnaryOp::LogicalNot => "!",
+                UnaryOp::Minus => "-",
+                UnaryOp::Plus => "+",
             };
             format!("{}{}", op_str, expr_to_r(operand))
         }

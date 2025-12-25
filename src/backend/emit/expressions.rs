@@ -53,11 +53,21 @@ impl WasmGenerator {
                         });
                     }
                 }
-                // Check if this is a local variable that holds a function with environment
-                else if ctx.has_local(name) && self.env_struct_types.contains_key(name) {
-                    // This is a function with environment stored in a local variable - just load it
-                    let idx = ctx.get_local(name).unwrap();
-                    func.instruction(&Instruction::LocalGet(idx));
+                // Check if this is a local variable (must check BEFORE function names to avoid shadowing)
+                else if let Some(idx) = ctx.get_local(name) {
+                    // Local variable - might be in a reference cell
+                    if ctx.needs_ref_cell(name) {
+                        // Variable is in a reference cell - load the ref cell and extract the value
+                        let ref_cell_type_idx = self.get_or_create_ref_cell_type(&expr.ty);
+                        func.instruction(&Instruction::LocalGet(idx));
+                        func.instruction(&Instruction::StructGet {
+                            struct_type_index: ref_cell_type_idx,
+                            field_index: 0,
+                        });
+                    } else {
+                        // Regular local variable
+                        func.instruction(&Instruction::LocalGet(idx));
+                    }
                 }
                 // Check if this is a function name being used as a value
                 else if let Some(&func_idx) = self.func_indices.get(name) {
@@ -107,20 +117,6 @@ impl WasmGenerator {
                     } else {
                         // Regular function without captures - just emit ref.func
                         func.instruction(&Instruction::RefFunc(func_idx));
-                    }
-                } else if let Some(idx) = ctx.get_local(name) {
-                    // Local variable - might be in a reference cell
-                    if ctx.needs_ref_cell(name) {
-                        // Variable is in a reference cell - load the ref cell and extract the value
-                        let ref_cell_type_idx = self.get_or_create_ref_cell_type(&expr.ty);
-                        func.instruction(&Instruction::LocalGet(idx));
-                        func.instruction(&Instruction::StructGet {
-                            struct_type_index: ref_cell_type_idx,
-                            field_index: 0,
-                        });
-                    } else {
-                        // Regular local variable
-                        func.instruction(&Instruction::LocalGet(idx));
                     }
                 } else {
                     // Unknown variable, push 0 as fallback
@@ -425,6 +421,29 @@ impl WasmGenerator {
                 // Since booleans are represented as i32 (0 or 1),
                 // eqz will flip: 0 -> 1, 1 -> 0
                 func.instruction(&Instruction::I32Eqz);
+            }
+            UnaryOp::Minus => {
+                // Unary minus (negation)
+                match &operand.ty {
+                    Type::Int => {
+                        // For i32: multiply by -1
+                        // Stack: [x] -> [x, -1] -> [x * -1]
+                        func.instruction(&Instruction::I32Const(-1));
+                        func.instruction(&Instruction::I32Mul);
+                    }
+                    Type::Double => {
+                        // For f64: use f64.neg instruction
+                        func.instruction(&Instruction::F64Neg);
+                    }
+                    _ => {
+                        // Should not happen due to type checking
+                        eprintln!("Warning: unary minus on non-numeric type");
+                    }
+                }
+            }
+            UnaryOp::Plus => {
+                // Unary plus is a no-op - value is already on stack
+                // Just leave it as is
             }
         }
     }

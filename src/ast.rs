@@ -42,6 +42,8 @@ pub enum BinaryOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
     LogicalNot, // '!'
+    Minus,      // '-' (negation)
+    Plus,       // '+' (unary plus)
 }
 
 /// Represents a function call argument, which can be either positional or named.

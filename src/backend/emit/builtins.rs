@@ -143,22 +143,36 @@ impl WasmGenerator {
                 func.instruction(&Instruction::Unreachable);
             }
             BuiltinKind::Vector => {
-                // vec(length: int) creates a vector of given length with default values
+                // vec(length: int, mode: string) creates a vector of given length and type
                 // Returns a vector struct: (struct (field array_ref) (field length))
 
-                if args.len() != 1 {
+                if args.len() != 2 {
                     return;
                 }
 
-                // vec() returns Vector(Double) by default
+                // Extract element type from the mode parameter (second argument)
+                // The mode is a string literal that was validated during type resolution
                 use crate::types::Type;
-                let elem_ty = Type::Double;
+                let elem_ty = match &args[1].kind {
+                    crate::ir::IRExprKind::XString(mode) => match mode.as_str() {
+                        "logical" => Type::Logical,
+                        "int" | "integer" => Type::Int,
+                        "double" | "numeric" => Type::Double,
+                        _ => Type::Double, // Default fallback (should not happen due to validation)
+                    },
+                    _ => Type::Double, // Default fallback
+                };
 
                 // Get the vector struct type index
                 let vector_struct_idx = self.ensure_vector_struct_type(&elem_ty);
 
-                // Get the array type index for the data field
-                let storage = StorageType::Val(ValType::F64);
+                // Map element type to WASM storage type
+                let storage = match elem_ty {
+                    Type::Logical => StorageType::Val(ValType::I32),
+                    Type::Int => StorageType::Val(ValType::I32),
+                    Type::Double => StorageType::Val(ValType::F64),
+                    _ => StorageType::Val(ValType::F64), // Fallback
+                };
                 let array_type_idx = self.ensure_array_type(&storage);
 
                 // Step 1: Evaluate length and create the array

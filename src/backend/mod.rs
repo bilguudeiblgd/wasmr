@@ -176,7 +176,7 @@ impl WasmGenerator {
         let mut _current_func_idx = main_func_index + 1;
 
         for func_stmt in &program.functions {
-            if let Stmt::FunctionDef { params, return_type, metadata, .. } = func_stmt {
+            if let Stmt::FunctionDef { name, params, return_type, metadata, .. } = func_stmt {
                 let metadata = metadata.as_ref().expect("All functions should have metadata after passes");
 
                 // Declare function type
@@ -251,15 +251,6 @@ impl WasmGenerator {
         // Generate main function statements
         for stmt in &main_body.stmts {
             self.gen_stmt(&mut main_func, &ctx, stmt, ret_has_value);
-        }
-
-        // Generate tail expression if present
-        if let Some(tail) = &main_body.tail_expr {
-            self.gen_expr(&mut main_func, &ctx, tail);
-            // If there's no return value expected but tail produces one, drop it
-            if !ret_has_value && !matches!(tail.ty, crate::types::Type::Void) {
-                main_func.instruction(&Instruction::Drop);
-            }
         }
 
         main_func.instruction(&Instruction::End);
@@ -358,15 +349,6 @@ impl WasmGenerator {
                 // Generate function statements
                 for stmt in &body.stmts {
                     self.gen_stmt(&mut func, &ctx, stmt, ret_has_value);
-                }
-
-                // Generate tail expression if present
-                if let Some(tail) = &body.tail_expr {
-                    self.gen_expr(&mut func, &ctx, tail);
-                    // If there's no return value expected but tail produces one, drop it
-                    if !ret_has_value && !matches!(tail.ty, crate::types::Type::Void) {
-                        func.instruction(&Instruction::Drop);
-                    }
                 }
 
                 func.instruction(&Instruction::End);
