@@ -1,6 +1,0 @@
-range <- (1 : 10)
-len <- length(range)
-print(len)
-v <- c(100, 200)
-size <- length(v)
-print(size)

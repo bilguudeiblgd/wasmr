@@ -3,3 +3,5 @@
 # Ignore WebAssembly output files
 *.wasm
 *.wat
+
+data_R
