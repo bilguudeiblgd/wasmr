@@ -18,6 +18,7 @@ pub enum BinaryOp {
     Minus,
     Mul,
     Div,
+    Mod,
     Equality,
     NotEqual, // '!='
     Less,

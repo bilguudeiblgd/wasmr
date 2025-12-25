@@ -105,6 +105,16 @@ impl Lexer {
                     tokens.push(Token::Div);
                     self.consume(&chars, &mut current);
                 }
+                '%' => {
+                    if(self.peek_n(&chars, current, 1).unwrap() == '%') {
+                        tokens.push(Token::Mod);
+                        self.consume(&chars, &mut current);
+                        self.consume(&chars, &mut current);
+                    }
+                    else {
+                        panic!("Expecting %")
+                    }
+                }
                 '|' => {
                     tokens.push(Token::Or);
                     self.consume(&chars, &mut current);
@@ -296,6 +306,7 @@ pub enum Token {
     Minus,
     Mul,
     Div,
+    Mod,
     Or,  // '|'
     And, // '&'
     Equality,

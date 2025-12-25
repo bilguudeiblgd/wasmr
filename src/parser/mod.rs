@@ -45,6 +45,7 @@ impl Parser {
             | (Some(Token::Minus), Token::Minus)
             | (Some(Token::Mul), Token::Mul)
             | (Some(Token::Div), Token::Div)
+            | (Some(Token::Mod), Token::Mod)
             | (Some(Token::Or), Token::Or)
             | (Some(Token::And), Token::And)
             | (Some(Token::LParen), Token::LParen)

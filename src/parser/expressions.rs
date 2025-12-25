@@ -115,6 +115,13 @@ impl Parser {
                     op: BinaryOp::Div,
                     right: Box::new(right),
                 };
+            } else if self.match_token(&Token::Mod) {
+                let right = self.parse_call()?;
+                expr = Expr::Binary {
+                    left: Box::new(expr),
+                    op: BinaryOp::Mod,
+                    right: Box::new(right),
+                };
             } else {
                 break;
             }

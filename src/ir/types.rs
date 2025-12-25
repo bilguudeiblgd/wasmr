@@ -56,6 +56,7 @@ pub enum BuiltinKind {
     List,
     Print,
     Length,
+    Stop,
 }
 
 #[derive(Debug, Clone, PartialEq)]

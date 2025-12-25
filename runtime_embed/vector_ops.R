@@ -22,13 +22,13 @@ system_vector_add___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
         lower_size <- n
     }
 
-    if(higher_size % lower_size != 0) {
+    if(higher_size %% lower_size != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
     result <- higher
     for(i in 1:higher_size) {
-        lower_idx <- ((i - 1) % lower_size) + 1
+        lower_idx <- ((i - 1) %% lower_size) + 1
         result[i] <- higher[i] + lower[lower_idx]
     }
     return(result)
@@ -50,13 +50,13 @@ system_vector_add___vec_double__vec_double <- function(a: vector<double>, b: vec
         lower_size <- n
     }
 
-    if(higher_size % lower_size != 0) {
+    if(higher_size %% lower_size != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
     result <- higher
     for(i in 1:higher_size) {
-        lower_idx <- ((i - 1) % lower_size) + 1
+        lower_idx <- ((i - 1) %% lower_size) + 1
         result[i] <- higher[i] + lower[lower_idx]
     }
     return(result)
@@ -99,7 +99,7 @@ system_vector_sub___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     n <- length(a)
     m <- length(b)
 
-    if(n != m && n % m != 0 && m % n != 0) {
+    if(n != m && n %% m != 0 && m %% n != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
@@ -107,8 +107,8 @@ system_vector_sub___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     result <- c()
 
     for(i in 1:result_len) {
-        a_idx <- ((i - 1) % n) + 1
-        b_idx <- ((i - 1) % m) + 1
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] - b[b_idx]
     }
     return(result)
@@ -119,7 +119,7 @@ system_vector_sub___vec_double__vec_double <- function(a: vector<double>, b: vec
     n <- length(a)
     m <- length(b)
 
-    if(n != m && n % m != 0 && m % n != 0) {
+    if(n != m && n %% m != 0 && m %% n != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
@@ -127,8 +127,8 @@ system_vector_sub___vec_double__vec_double <- function(a: vector<double>, b: vec
     result <- c()
 
     for(i in 1:result_len) {
-        a_idx <- ((i - 1) % n) + 1
-        b_idx <- ((i - 1) % m) + 1
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] - b[b_idx]
     }
     return(result)
@@ -154,13 +154,13 @@ system_vector_mul___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
         lower_size <- n
     }
 
-    if(higher_size % lower_size != 0) {
+    if(higher_size %% lower_size != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
     result <- higher
     for(i in 1:higher_size) {
-        lower_idx <- ((i - 1) % lower_size) + 1
+        lower_idx <- ((i - 1) %% lower_size) + 1
         result[i] <- higher[i] * lower[lower_idx]
     }
     return(result)
@@ -182,13 +182,13 @@ system_vector_mul___vec_double__vec_double <- function(a: vector<double>, b: vec
         lower_size <- n
     }
 
-    if(higher_size % lower_size != 0) {
+    if(higher_size %% lower_size != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
     result <- higher
     for(i in 1:higher_size) {
-        lower_idx <- ((i - 1) % lower_size) + 1
+        lower_idx <- ((i - 1) %% lower_size) + 1
         result[i] <- higher[i] * lower[lower_idx]
     }
     return(result)
@@ -203,7 +203,7 @@ system_vector_div___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     n <- length(a)
     m <- length(b)
 
-    if(n != m && n % m != 0 && m % n != 0) {
+    if(n != m && n %% m != 0 && m %% n != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
@@ -211,8 +211,8 @@ system_vector_div___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     result <- c()
 
     for(i in 1:result_len) {
-        a_idx <- ((i - 1) % n) + 1
-        b_idx <- ((i - 1) % m) + 1
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] / b[b_idx]
     }
     return(result)
@@ -224,7 +224,7 @@ system_vector_div___vec_double__vec_double <- function(a: vector<double>, b: vec
     n <- length(a)
     m <- length(b)
 
-    if(n != m && n % m != 0 && m % n != 0) {
+    if(n != m && n %% m != 0 && m %% n != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
@@ -232,8 +232,8 @@ system_vector_div___vec_double__vec_double <- function(a: vector<double>, b: vec
     result <- c()
 
     for(i in 1:result_len) {
-        a_idx <- ((i - 1) % n) + 1
-        b_idx <- ((i - 1) % m) + 1
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] / b[b_idx]
     }
     return(result)

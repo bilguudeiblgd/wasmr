@@ -25,21 +25,56 @@ impl WasmGenerator {
                             op: &BinaryOp,
                             left: &IRExpr,
                             right: &IRExpr) {
-        // allowed
-        // Type -> Vector[Type] op Type
-        // Or -> Vector[Type] op Type
-        // func.instruction(&Instruction::ArrayGet())
+        // Vector operations dispatch to runtime functions based on types
+        // Name mangling scheme: system_vector_{op}___{left_type}__{right_type}
+        // Examples:
+        //   vector<int> + vector<int> -> system_vector_add___vec_int__vec_int
+        //   vector<int> + int -> system_vector_add___vec_int__int
+        //   int + vector<int> -> system_vector_add___int__vec_int
 
-        match op {
-            BinaryOp::Plus => {
-                let callee = IRExpr {
-                    kind: IRExprKind::Identifier("vector_add".to_string()),
-                    ty: Type::Vector(Box::new(Type::Int)),
-                };
-                let args = vec![left.clone(), right.clone()];
-                self.gen_call(func, ctx, &callee, &args);
+        let op_name = match op {
+            BinaryOp::Plus => "add",
+            BinaryOp::Minus => "sub",
+            BinaryOp::Mul => "mul",
+            BinaryOp::Div => "div",
+            BinaryOp::Mod => "mod",
+            _ => {
+                eprintln!("Unsupported vector operation: {:?}", op);
+                return;
             }
-            _ => {}
+        };
+
+        // Generate type suffixes for mangling
+        let left_suffix = self.mangle_type_suffix(&left.ty);
+        let right_suffix = self.mangle_type_suffix(&right.ty);
+
+        // Build mangled function name (follows scheme: name___arg1__arg2)
+        let mangled_name = format!("system_vector_{}___{}__{}",
+                                   op_name, left_suffix, right_suffix);
+
+        // Determine result type (promote if needed)
+        let result_ty = match (&left.ty, &right.ty) {
+            (Type::Vector(inner), _) | (_, Type::Vector(inner)) => Type::Vector(inner.clone()),
+            _ => left.ty.clone(), // fallback
+        };
+
+        let callee = IRExpr {
+            kind: IRExprKind::Identifier(mangled_name),
+            ty: result_ty,
+        };
+        let args = vec![left.clone(), right.clone()];
+        self.gen_call(func, ctx, &callee, &args);
+    }
+
+    /// Generate type suffix for name mangling
+    /// Examples: Type::Int -> "int", Type::Vector(Int) -> "vec_int"
+    fn mangle_type_suffix(&self, ty: &Type) -> String {
+        match ty {
+            Type::Int => "int".to_string(),
+            Type::Double => "double".to_string(),
+            Type::Logical => "logical".to_string(),
+            Type::Vector(inner) => format!("vec_{}", self.mangle_type_suffix(inner)),
+            _ => "any".to_string(),
         }
     }
 
@@ -92,6 +127,10 @@ impl WasmGenerator {
             BinaryOp::Div => {
                 Self::emit_typed_instruction(func, ty, Instruction::I32DivS, Instruction::F64Div);
             }
+            BinaryOp::Mod => {
+                // Note: F64 modulo would need a library function; for now we only support i32
+                Self::emit_typed_instruction(func, ty, Instruction::I32RemS, Instruction::I32RemS);
+            }
             BinaryOp::Less => {
                 Self::emit_typed_instruction(func, ty, Instruction::I32LtS, Instruction::F64Lt);
             }
@@ -124,35 +163,45 @@ impl WasmGenerator {
     }
 
     pub(crate) fn gen_range(&mut self, func: &mut Function, _ctx: &LocalContext, left: &IRExpr, right: &IRExpr) {
-        let start = match &left.kind {
-            IRExprKind::Number(num) => {
-                 num.parse::<i32>().unwrap()
-            }
-            _ => panic!("Range start must be a number")
-        };
-        let end = match &right.kind {
-            IRExprKind::Number(num) => {
-                num.parse::<i32>().unwrap()
-            }
-            _ => panic!("Range end must be a number")
-        };
+        // Check if both are constant numbers
+        let is_const_start = matches!(&left.kind, IRExprKind::Number(_));
+        let is_const_end = matches!(&right.kind, IRExprKind::Number(_));
 
-        // Push all elements
-        for i in start..(end + 1) {
-            func.instruction(&Instruction::I32Const(i));
+        if is_const_start && is_const_end {
+            // Constant range - generate at compile time
+            let start = match &left.kind {
+                IRExprKind::Number(num) => num.parse::<i32>().unwrap(),
+                _ => unreachable!()
+            };
+            let end = match &right.kind {
+                IRExprKind::Number(num) => num.parse::<i32>().unwrap(),
+                _ => unreachable!()
+            };
+
+            // Push all elements
+            for i in start..(end + 1) {
+                func.instruction(&Instruction::I32Const(i));
+            }
+
+            // Create the data array
+            let storage = self.storage_type_for(&Type::Int);
+            let array_type_index = self.ensure_array_type(&storage);
+            let array_size = (end - start + 1) as u32;
+            func.instruction(&Instruction::ArrayNewFixed { array_type_index, array_size });
+
+            // Push length
+            func.instruction(&Instruction::I32Const(array_size as i32));
+
+            // Create vector struct: (struct (field data) (field length))
+            let vector_struct_index = self.ensure_vector_struct_type(&Type::Int);
+            func.instruction(&Instruction::StructNew(vector_struct_index));
+        } else {
+            // Dynamic range not yet supported
+            // TODO: Implement dynamic range generation by either:
+            // 1. Desugaring at IR level into a loop that builds the vector
+            // 2. Adding a runtime function to create ranges
+            // 3. Pre-registering temporary variables in variable collection pass
+            panic!("Dynamic range expressions (e.g., 1:n where n is a variable) are not yet supported. Use constant ranges like 1:10 instead.");
         }
-
-        // Create the data array
-        let storage = self.storage_type_for(&Type::Int);
-        let array_type_index = self.ensure_array_type(&storage);
-        let array_size = (end - start + 1) as u32;
-        func.instruction(&Instruction::ArrayNewFixed { array_type_index, array_size });
-
-        // Push length
-        func.instruction(&Instruction::I32Const(array_size as i32));
-
-        // Create vector struct: (struct (field data) (field length))
-        let vector_struct_index = self.ensure_vector_struct_type(&Type::Int);
-        func.instruction(&Instruction::StructNew(vector_struct_index));
     }
 }

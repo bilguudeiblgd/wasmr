@@ -176,6 +176,7 @@ fn expr_to_r(expr: &Expr) -> String {
                 BinaryOp::Minus => "-",
                 BinaryOp::Mul => "*",
                 BinaryOp::Div => "/",
+                BinaryOp::Mod => "%%",
                 BinaryOp::Equality => "==",
                 BinaryOp::NotEqual => "!=",
                 BinaryOp::Less => "<",

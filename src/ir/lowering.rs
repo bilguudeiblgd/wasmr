@@ -88,6 +88,43 @@ impl<'a> LowerCtx<'a> {
         Ok(out)
     }
 
+    /// Generate a mangled function name for overload resolution
+    /// Follows the scheme: system_name___arg1__arg2__arg3
+    /// Examples:
+    ///   max(int, int) -> system_max___int__int
+    ///   sum(vec<int>) -> system_sum___vec_int
+    fn mangle_function_name(&self, base_name: &str, args: &[IRExpr]) -> String {
+        if args.is_empty() {
+            return base_name.to_string();
+        }
+
+        let mut mangled = format!("system_{}", base_name);
+        for (i, arg) in args.iter().enumerate() {
+            if i == 0 {
+                mangled.push_str("___");  // THREE underscores before first arg
+            } else {
+                mangled.push_str("__");   // TWO underscores between args
+            }
+            mangled.push_str(&Self::mangle_type(&arg.ty));
+        }
+        mangled
+    }
+
+    /// Convert a type to its mangled string representation
+    /// Examples: Int -> "int", Vector(Int) -> "vec_int", Double -> "double"
+    fn mangle_type(ty: &Type) -> String {
+        match ty {
+            Type::Int => "int".to_string(),
+            Type::Double => "double".to_string(),
+            Type::Logical => "logical".to_string(),
+            Type::Char => "char".to_string(),
+            Type::String => "string".to_string(),
+            Type::Vector(inner) => format!("vec_{}", Self::mangle_type(inner)),
+            Type::Function { .. } => "func".to_string(),
+            _ => "any".to_string(),
+        }
+    }
+
     /// Lower a Block (statements + optional tail expression) to IRBlock
     fn lower_ast_block(&mut self, block: Block) -> TyResult<IRBlock> {
         // Lower all statements
@@ -497,7 +534,7 @@ impl<'a> LowerCtx<'a> {
                 let l = self.lower_expr(*left)?;
                 let r = self.lower_expr(*right)?;
                 match op {
-                    BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div => {
+                    BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => {
                         // #TODO: promotion for numerics inside vector or composite types
                         if (matches!(l.ty, Vector(_)) || matches!(r.ty, Vector(_))) {
                             return Ok(IRExpr {
@@ -591,11 +628,23 @@ impl<'a> LowerCtx<'a> {
                         return self.lower_builtin_call(&descriptor, ir_args);
                     }
 
-                    // Look up function type from scope
-                    let func_type = self
-                        .tr
-                        .lookup_var(&name)
-                        .ok_or_else(|| TypeError::UnknownFunction(name.clone()))?;
+                    // First, lower all arguments to get their types for overload resolution
+                    let mut lowered_args = Vec::with_capacity(args.len());
+                    for arg in args {
+                        lowered_args.push(self.lower_expr(arg)?);
+                    }
+
+                    // Try function overloading: generate mangled name based on argument types
+                    let mangled_name = self.mangle_function_name(&name, &lowered_args);
+
+                    // Look up function type from scope (try mangled name first, then original)
+                    let (resolved_name, func_type) = if let Some(ty) = self.tr.lookup_var(&mangled_name) {
+                        (mangled_name, ty)
+                    } else if let Some(ty) = self.tr.lookup_var(&name) {
+                        (name.clone(), ty)
+                    } else {
+                        return Err(TypeError::UnknownFunction(name.clone()));
+                    };
 
                     // Extract params and return type from Function type
                     let (params, ret_ty) = match &func_type {
@@ -614,30 +663,30 @@ impl<'a> LowerCtx<'a> {
 
                     if params.iter().any(|p| matches!(p.kind, ParamKind::VarArgs)) {
                         return Err(TypeError::UnsupportedOperation {
-                            op: format!("calling variadic function {}", name),
+                            op: format!("calling variadic function {}", resolved_name),
                             left: Type::VarArgs,
                             right: Type::VarArgs,
                         });
                     }
 
-                    if params.len() != args.len() {
+                    if params.len() != lowered_args.len() {
                         return Err(TypeError::ArityMismatch {
-                            func: name,
+                            func: resolved_name.clone(),
                             expected: params.len(),
-                            found: args.len(),
+                            found: lowered_args.len(),
                         });
                     }
 
-                    let mut ir_args = Vec::with_capacity(args.len());
-                    for (i, (arg_ast, param)) in
-                        args.into_iter().zip(params.into_iter()).enumerate()
+                    // Type-check and coerce arguments (they're already lowered)
+                    let mut ir_args = Vec::with_capacity(lowered_args.len());
+                    for (i, (arg_ir, param)) in
+                        lowered_args.into_iter().zip(params.into_iter()).enumerate()
                     {
-                        let a_ir = self.lower_expr(arg_ast)?;
                         let expected_ty = match param.kind {
                             ParamKind::Normal(ty) => ty,
                             ParamKind::VarArgs => unreachable!("variadic params already rejected"),
                         };
-                        let a_ir2 = ensure_ty(a_ir, expected_ty.clone());
+                        let a_ir2 = ensure_ty(arg_ir, expected_ty.clone());
                         if !types_compatible(&a_ir2.ty, &expected_ty) {
                             return Err(TypeError::TypeMismatch {
                                 expected: expected_ty,
@@ -651,7 +700,7 @@ impl<'a> LowerCtx<'a> {
                     Ok(IRExpr {
                         kind: IRExprKind::Call {
                             callee: Box::new(IRExpr {
-                                kind: IRExprKind::Identifier(name),
+                                kind: IRExprKind::Identifier(resolved_name),
                                 ty: func_type.clone(), // Callee should have Function type
                             }),
                             args: ir_args,
@@ -844,9 +893,12 @@ impl<'a> LowerCtx<'a> {
             BuiltinKind::List => "list",
             BuiltinKind::Print => "print",
             BuiltinKind::Length => "length",
+            BuiltinKind::Stop => "stop",
         };
 
-        if args.is_empty() {
+        // c() and list() can be called with 0 args to create empty collections
+        // Other builtins require at least 1 argument
+        if args.is_empty() && !matches!(kind, BuiltinKind::C | BuiltinKind::List) {
             return Err(TypeError::ArityMismatch {
                 func: name.to_string(),
                 expected: 1,
@@ -869,6 +921,14 @@ impl<'a> LowerCtx<'a> {
                     return Ok(IRExpr {
                         kind: IRExprKind::VectorLiteral(args),
                         ty: return_ty,
+                    });
+                }
+
+                // Handle empty c() - create empty int vector
+                if args.is_empty() {
+                    return Ok(IRExpr {
+                        kind: IRExprKind::VectorLiteral(vec![]),
+                        ty: Vector(Box::new(Type::Int)),
                     });
                 }
 
@@ -975,6 +1035,28 @@ impl<'a> LowerCtx<'a> {
                         context: format!("length() argument (expected vector)"),
                     });
                 }
+
+                Ok(IRExpr {
+                    kind: IRExprKind::BuiltinCall {
+                        builtin: kind,
+                        args,
+                    },
+                    ty: return_ty,
+                })
+            }
+            BuiltinKind::Stop => {
+                if args.len() != 1 {
+                    return Err(TypeError::ArityMismatch {
+                        func: name.to_string(),
+                        expected: 1,
+                        found: args.len(),
+                    });
+                }
+
+                // Accept string messages for now
+                // In the future, we might support other types
+                // For now, we'll just check that there's an argument
+                // The actual error message handling will be done in codegen
 
                 Ok(IRExpr {
                     kind: IRExprKind::BuiltinCall {

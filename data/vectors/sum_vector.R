@@ -6,4 +6,4 @@ add_vec <- function(): vector<int> {
     return(my_vector)
 }
 
-print(sum)
+print(sum(add_vec()))

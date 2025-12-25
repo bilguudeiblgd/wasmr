@@ -58,6 +58,13 @@ impl TypeResolver {
                 return_type: Type::Int,
             }
         );
+        builtins.insert(
+            "stop".to_string(),
+            BuiltinDescriptor {
+                kind: BuiltinKind::Stop,
+                return_type: Type::Void,
+            }
+        );
         Self {
             scope_stack: vec![HashMap::new()],  // Start with one global scope
             builtins,

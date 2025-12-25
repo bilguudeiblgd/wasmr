@@ -125,6 +125,23 @@ impl WasmGenerator {
                     func.instruction(&Instruction::RefNull(HeapType::ANY));
                 }
             }
+            BuiltinKind::Stop => {
+                // stop() immediately halts execution with an error
+                // We evaluate the argument (typically an error message string)
+                // then use the unreachable instruction to trap
+
+                if !args.is_empty() {
+                    // Generate the argument (typically a string message)
+                    self.gen_expr(func, ctx, &args[0]);
+                    // Drop the message (we can't easily print it before trapping)
+                    // In a more sophisticated implementation, we'd call an error handler
+                    func.instruction(&Instruction::Drop);
+                }
+
+                // Trap execution immediately
+                // This will cause the WASM runtime to halt with an error
+                func.instruction(&Instruction::Unreachable);
+            }
         }
     }
 }
