@@ -5,3 +5,5 @@ add_vec <- function(): vector<int> {
     my_vector <- x + y
     return(my_vector)
 }
+
+print(sum)

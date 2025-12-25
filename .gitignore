@@ -1,1 +1,5 @@
 /target
+
+# Ignore WebAssembly output files
+*.wasm
+*.wat
