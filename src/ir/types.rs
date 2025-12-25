@@ -57,6 +57,7 @@ pub enum BuiltinKind {
     Print,
     Length,
     Stop,
+    Vector,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -271,6 +272,10 @@ pub enum TypeError {
     MissingReturnValue {
         function: String,
         expected: Type,
+    },
+    ArgumentError {
+        func: String,
+        message: String,
     },
 }
 

@@ -99,7 +99,7 @@ system_vector_sub___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     n <- length(a)
     m <- length(b)
 
-    if(n != m && n %% m != 0 && m %% n != 0) {
+    if(n != m & n %% m != 0 & m %% n != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
@@ -119,7 +119,7 @@ system_vector_sub___vec_double__vec_double <- function(a: vector<double>, b: vec
     n <- length(a)
     m <- length(b)
 
-    if(n != m && n %% m != 0 && m %% n != 0) {
+    if(n != m & n %% m != 0 & m %% n != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
@@ -203,7 +203,7 @@ system_vector_div___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     n <- length(a)
     m <- length(b)
 
-    if(n != m && n %% m != 0 && m %% n != 0) {
+    if(n != m & n %% m != 0 & m %% n != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 
@@ -224,7 +224,7 @@ system_vector_div___vec_double__vec_double <- function(a: vector<double>, b: vec
     n <- length(a)
     m <- length(b)
 
-    if(n != m && n %% m != 0 && m %% n != 0) {
+    if(n != m & n %% m != 0 & m %% n != 0) {
         stop("Vector lengths not compatible for recycling")
     }
 

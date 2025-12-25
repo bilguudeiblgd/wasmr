@@ -2,9 +2,117 @@ use super::type_resolver::{BuiltinDescriptor, FunctionCtx, TypeResolver};
 use super::types::{
     BuiltinKind, IRBlock, IRExpr, IRExprKind, IRProgram, IRStmt, TyResult, TypeError,
 };
-use crate::ast::{BinaryOp, Block, Expr as AstExpr, Expr, Stmt as AstStmt};
+use crate::ast::{Argument, BinaryOp, Block, Expr as AstExpr, Expr, Stmt as AstStmt};
 use crate::types::Type::Vector;
-use crate::types::{ParamKind, Type};
+use crate::types::{Param, ParamKind, Type};
+
+/// Extract expression from an Argument (handles both Positional and Named)
+/// TODO: Remove this once all call sites use match_arguments_to_params
+fn extract_arg_expr(arg: Argument) -> AstExpr {
+    match arg {
+        Argument::Positional(expr) => expr,
+        Argument::Named { value, .. } => value,
+    }
+}
+
+/// Match function call arguments to function parameters, handling:
+/// - Positional arguments
+/// - Named arguments
+/// - Default parameter values
+/// - Argument reordering
+///
+/// Returns expressions in parameter order, with defaults filled in.
+fn match_arguments_to_params(
+    args: Vec<Argument>,
+    param_defs: &[crate::ast::ParamDef],
+    func_name: &str,
+) -> Result<Vec<AstExpr>, TypeError> {
+    // Separate positional and named arguments
+    let mut positional_args = Vec::new();
+    let mut named_args = Vec::new();
+    let mut seen_named = false;
+
+    for arg in args {
+        match arg {
+            Argument::Positional(expr) => {
+                if seen_named {
+                    return Err(TypeError::ArgumentError {
+                        func: func_name.to_string(),
+                        message: "positional arguments must come before named arguments".to_string(),
+                    });
+                }
+                positional_args.push(expr);
+            }
+            Argument::Named { name, value } => {
+                seen_named = true;
+                named_args.push((name, value));
+            }
+        }
+    }
+
+    // Result: expressions in parameter order
+    let mut result_exprs: Vec<Option<AstExpr>> = vec![None; param_defs.len()];
+
+    // Step 1: Match positional arguments to first N parameters
+    if positional_args.len() > param_defs.len() {
+        return Err(TypeError::ArityMismatch {
+            func: func_name.to_string(),
+            expected: param_defs.len(),
+            found: positional_args.len(),
+        });
+    }
+
+    for (i, expr) in positional_args.into_iter().enumerate() {
+        result_exprs[i] = Some(expr);
+    }
+
+    // Step 2: Match named arguments to parameters by name
+    for (arg_name, arg_value) in named_args {
+        // Find parameter with this name
+        let param_idx = param_defs.iter().position(|pd| pd.param.name == arg_name);
+
+        match param_idx {
+            None => {
+                return Err(TypeError::ArgumentError {
+                    func: func_name.to_string(),
+                    message: format!("unknown parameter name: '{}'", arg_name),
+                });
+            }
+            Some(idx) => {
+                // Check if already provided (via positional)
+                if result_exprs[idx].is_some() {
+                    return Err(TypeError::ArgumentError {
+                        func: func_name.to_string(),
+                        message: format!(
+                            "parameter '{}' provided both positionally and by name",
+                            arg_name
+                        ),
+                    });
+                }
+                result_exprs[idx] = Some(arg_value);
+            }
+        }
+    }
+
+    // Step 3: Fill in defaults for missing parameters
+    for (i, param_def) in param_defs.iter().enumerate() {
+        if result_exprs[i].is_none() {
+            // Check if parameter has a default value
+            if let Some(default_expr) = &param_def.default_value {
+                result_exprs[i] = Some((**default_expr).clone());
+            } else {
+                // Required parameter not provided
+                return Err(TypeError::ArgumentError {
+                    func: func_name.to_string(),
+                    message: format!("missing required parameter: '{}'", param_def.param.name),
+                });
+            }
+        }
+    }
+
+    // Step 4: Extract all expressions (they should all be Some now)
+    Ok(result_exprs.into_iter().map(|opt| opt.unwrap()).collect())
+}
 
 /// Compare two types for compatibility, ignoring parameter names in function types
 fn types_compatible(t1: &Type, t2: &Type) -> bool {
@@ -172,9 +280,12 @@ impl<'a> LowerCtx<'a> {
                     let declared_ret_ty = return_type;
                     let placeholder_ret_ty = declared_ret_ty.clone().unwrap_or(Type::Any);
 
+                    // Extract base Param for type signature (without defaults)
+                    let type_params: Vec<Param> = params.iter().map(|pd| pd.param.clone()).collect();
+
                     // Create function type with placeholder
                     let func_ty = Type::Function {
-                        params: params.clone(),
+                        params: type_params.clone(),
                         return_type: Box::new(placeholder_ret_ty.clone()),
                     };
 
@@ -186,21 +297,24 @@ impl<'a> LowerCtx<'a> {
                         self.tr.define_var(name.clone(), func_ty);
                     }
 
+                    // Store parameter definitions for named argument resolution
+                    self.tr.function_param_defs.insert(name.clone(), params.clone());
+
                     // Enter NEW function scope
                     self.tr.enter_scope();
 
                     // Add parameters to new function scope
                     for p in &params {
-                        if let ParamKind::Normal(param_ty) = &p.kind {
-                            self.tr.define_var(p.name.clone(), param_ty.clone());
+                        if let ParamKind::Normal(param_ty) = &p.param.kind {
+                            self.tr.define_var(p.param.name.clone(), param_ty.clone());
                         }
                     }
 
                     // Set function context
                     let saved_fn = self.tr.current_function.clone();
                     let varargs_name = params.iter().find_map(|p| {
-                        if matches!(p.kind, ParamKind::VarArgs) {
-                            Some(p.name.clone())
+                        if matches!(p.param.kind, ParamKind::VarArgs) {
+                            Some(p.param.name.clone())
                         } else {
                             None
                         }
@@ -244,7 +358,7 @@ impl<'a> LowerCtx<'a> {
                     // Update the function's type in the environment with the final inferred return type
                     // This ensures that calls to this function see the correct return type
                     let final_func_ty = Type::Function {
-                        params: params.clone(),
+                        params: type_params.clone(),
                         return_type: Box::new(final_ret_ty.clone()),
                     };
                     if is_super_assign {
@@ -255,7 +369,7 @@ impl<'a> LowerCtx<'a> {
 
                     return Ok(IRStmt::FunctionDef {
                         name,
-                        params,
+                        params: type_params,
                         return_type: final_ret_ty,
                         body: body_ir,
                         metadata: None,
@@ -497,11 +611,13 @@ impl<'a> LowerCtx<'a> {
             } => {
                 // For function expressions, default to Type::Any if no return type specified
                 // (Note: body is not lowered here - only when assigned to a variable)
+                // Extract base Param for type signature (without defaults)
+                let type_params: Vec<crate::types::Param> = params.iter().map(|pd| pd.param.clone()).collect();
                 let ret_ty = return_type.unwrap_or(Type::Any);
                 Ok(IRExpr {
                     kind: IRExprKind::Unit,
                     ty: Type::Function {
-                        params,
+                        params: type_params,
                         return_type: Box::new(ret_ty),
                     },
                 })
@@ -592,7 +708,7 @@ impl<'a> LowerCtx<'a> {
                             })
                         }
                     }
-                    BinaryOp::Range => {
+                    BinaryOp::Seq => {
                         if l.ty == Type::Int && r.ty == Type::Int {
                             Ok(IRExpr {
                                 kind: IRExprKind::Binary {
@@ -621,17 +737,42 @@ impl<'a> LowerCtx<'a> {
                 AstExpr::Identifier(name) => {
                     // Direct function call: name(args)
                     if let Some(descriptor) = self.tr.builtins.get(&name).cloned() {
-                        let mut ir_args = Vec::with_capacity(args.len());
-                        for arg in args {
-                            ir_args.push(self.lower_expr(arg)?);
+                        // Check if this built-in has parameter definitions for named argument support
+                        let param_defs = self.tr.function_param_defs.get(&name);
+
+                        // Match arguments to parameters if definitions exist
+                        let matched_exprs = if let Some(param_defs) = param_defs {
+                            match_arguments_to_params(args.clone(), param_defs, &name)?
+                        } else {
+                            // No param_defs - use simple positional extraction
+                            args.into_iter().map(extract_arg_expr).collect()
+                        };
+
+                        // Lower all matched arguments to IR
+                        let mut ir_args = Vec::with_capacity(matched_exprs.len());
+                        for expr in matched_exprs {
+                            ir_args.push(self.lower_expr(expr)?);
                         }
-                        return self.lower_builtin_call(&descriptor, ir_args);
+
+                        return self.lower_builtin_call(&descriptor, ir_args, &name);
                     }
 
-                    // First, lower all arguments to get their types for overload resolution
-                    let mut lowered_args = Vec::with_capacity(args.len());
-                    for arg in args {
-                        lowered_args.push(self.lower_expr(arg)?);
+                    // Look up parameter definitions for named argument matching
+                    let param_defs = self.tr.function_param_defs.get(&name);
+
+                    // Match arguments to parameters (handles named args, defaults, reordering)
+                    let matched_exprs = if let Some(param_defs) = param_defs {
+                        match_arguments_to_params(args.clone(), param_defs, &name)?
+                    } else {
+                        // No param_defs found - fall back to simple extraction
+                        // (This can happen for functions without definitions, like imported functions)
+                        args.into_iter().map(extract_arg_expr).collect()
+                    };
+
+                    // Lower all matched arguments to get their types for overload resolution
+                    let mut lowered_args = Vec::with_capacity(matched_exprs.len());
+                    for expr in matched_exprs {
+                        lowered_args.push(self.lower_expr(expr)?);
                     }
 
                     // Try function overloading: generate mangled name based on argument types
@@ -669,13 +810,7 @@ impl<'a> LowerCtx<'a> {
                         });
                     }
 
-                    if params.len() != lowered_args.len() {
-                        return Err(TypeError::ArityMismatch {
-                            func: resolved_name.clone(),
-                            expected: params.len(),
-                            found: lowered_args.len(),
-                        });
-                    }
+                    // Arity check is now handled by match_arguments_to_params (with default support)
 
                     // Type-check and coerce arguments (they're already lowered)
                     let mut ir_args = Vec::with_capacity(lowered_args.len());
@@ -759,7 +894,7 @@ impl<'a> LowerCtx<'a> {
                     for (i, (arg_ast, param)) in
                         args.into_iter().zip(params.into_iter()).enumerate()
                     {
-                        let a_ir = self.lower_expr(arg_ast)?;
+                        let a_ir = self.lower_expr(extract_arg_expr(arg_ast))?;
                         let expected_ty = match param.kind {
                             ParamKind::Normal(ty) => ty,
                             ParamKind::VarArgs => unreachable!("variadic params already rejected"),
@@ -885,16 +1020,10 @@ impl<'a> LowerCtx<'a> {
         &mut self,
         descriptor: &BuiltinDescriptor,
         args: Vec<IRExpr>,
+        name: &str,
     ) -> TyResult<IRExpr> {
         let kind = descriptor.kind;
         let return_ty = descriptor.return_type.clone();
-        let name = match kind {
-            BuiltinKind::C => "c",
-            BuiltinKind::List => "list",
-            BuiltinKind::Print => "print",
-            BuiltinKind::Length => "length",
-            BuiltinKind::Stop => "stop",
-        };
 
         // c() and list() can be called with 0 args to create empty collections
         // Other builtins require at least 1 argument
@@ -1057,6 +1186,33 @@ impl<'a> LowerCtx<'a> {
                 // In the future, we might support other types
                 // For now, we'll just check that there's an argument
                 // The actual error message handling will be done in codegen
+
+                Ok(IRExpr {
+                    kind: IRExprKind::BuiltinCall {
+                        builtin: kind,
+                        args,
+                    },
+                    ty: return_ty,
+                })
+            }
+            BuiltinKind::Vector => {
+                // vec(length: int) creates a vector of given length
+                if args.len() != 1 {
+                    return Err(TypeError::ArityMismatch {
+                        func: name.to_string(),
+                        expected: 1,
+                        found: args.len(),
+                    });
+                }
+
+                // Check that length argument is an integer
+                if !matches!(args[0].ty, Type::Int) {
+                    return Err(TypeError::TypeMismatch {
+                        expected: Type::Int,
+                        found: args[0].ty.clone(),
+                        context: format!("vec() length parameter"),
+                    });
+                }
 
                 Ok(IRExpr {
                     kind: IRExprKind::BuiltinCall {

@@ -31,6 +31,10 @@ impl Parser {
         self.tokens.get(self.pos)
     }
 
+    pub(crate) fn peek_nth(&self, n: usize) -> Option<&Token> {
+        self.tokens.get(self.pos + n)
+    }
+
     pub(crate) fn advance(&mut self) -> Option<&Token> {
         if !self.is_at_end() {
             self.pos += 1;
@@ -66,6 +70,7 @@ impl Parser {
             | (Some(Token::Function), Token::Function)
             | (Some(Token::Return), Token::Return)
             | (Some(Token::Identifier(_)), Token::Identifier(_))
+            | (Some(Token::AssignEqual), Token::AssignEqual)
             | (Some(Token::EOF), Token::EOF)
             | (Some(Token::If), Token::If)
             | (Some(Token::Else), Token::Else)
@@ -105,9 +110,5 @@ impl Parser {
 
     pub(crate) fn skip_newlines(&mut self) {
         while self.match_token(&Token::Newline) {}
-    }
-
-    pub(crate) fn peek_nth(&self, n: usize) -> Option<&Token> {
-        self.tokens.get(self.pos + n)
     }
 }

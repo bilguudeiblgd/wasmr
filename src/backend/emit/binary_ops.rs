@@ -105,8 +105,8 @@ impl WasmGenerator {
         let ty = &left.ty;
 
         // sign of bad design
-        if matches!(op, BinaryOp::Range) {
-            self.gen_range(func, ctx, left, right);
+        if matches!(op, BinaryOp::Seq) {
+            self.gen_seq(func, ctx, left, right);
             return;
         }
 
@@ -162,7 +162,7 @@ impl WasmGenerator {
         }
     }
 
-    pub(crate) fn gen_range(&mut self, func: &mut Function, _ctx: &LocalContext, left: &IRExpr, right: &IRExpr) {
+    pub(crate) fn gen_seq(&mut self, func: &mut Function, _ctx: &LocalContext, left: &IRExpr, right: &IRExpr) {
         // Check if both are constant numbers
         let is_const_start = matches!(&left.kind, IRExprKind::Number(_));
         let is_const_end = matches!(&right.kind, IRExprKind::Number(_));

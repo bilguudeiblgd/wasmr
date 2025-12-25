@@ -1,5 +1,14 @@
 use crate::types::{Type, Param};
 
+/// Parameter definition for function declarations, with optional default value
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParamDef {
+    /// Base parameter info (name and type)
+    pub param: Param,
+    /// Optional default value expression
+    pub default_value: Option<Box<Expr>>,
+}
+
 /// A block of statements with an optional tail expression.
 /// The tail expression, if present, represents the value of the block.
 #[derive(Debug, Clone, PartialEq)]
@@ -25,7 +34,7 @@ pub enum BinaryOp {
     LessEqual,
     Greater,
     GreaterEqual,
-    Range, // for ':' operator
+    Seq, // for ':' operator
     Or,    // '|'
     And,   // '&'
 }
@@ -33,6 +42,15 @@ pub enum BinaryOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
     LogicalNot, // '!'
+}
+
+/// Represents a function call argument, which can be either positional or named.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Argument {
+    /// Positional argument: just an expression
+    Positional(Expr),
+    /// Named argument: parameter name and value expression
+    Named { name: String, value: Expr },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -47,7 +65,7 @@ pub enum Expr {
     // In practice this is typically used on the right-hand side of an assignment,
     // e.g., `f <- function(x: int): int { return(x) }`.
     FunctionDef {
-        params: Vec<Param>,
+        params: Vec<ParamDef>,
         return_type: Option<Type>,
         body: Block,
     },
@@ -62,7 +80,7 @@ pub enum Expr {
     },
     Call {
         callee: Box<Expr>,
-        args: Vec<Expr>,
+        args: Vec<Argument>,
     },
     Index {
         target: Box<Expr>,

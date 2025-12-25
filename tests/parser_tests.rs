@@ -78,7 +78,7 @@ fn parse_expression_comparison_and_range() {
     let expected = Expr::Binary {
         left: Box::new(Expr::Binary {
             left: Box::new(Expr::Number("1".into())),
-            op: BinaryOp::Range,
+            op: BinaryOp::Seq,
             right: Box::new(Expr::Number("3".into())),
         }),
         op: BinaryOp::Less,
@@ -112,7 +112,7 @@ fn parse_assignment_statement() {
         x_type: Some(Type::Int),
         value: Expr::Binary {
             left: Box::new(Expr::Number("1".into())),
-            op: BinaryOp::Range,
+            op: BinaryOp::Seq,
             right: Box::new(Expr::Number("3".into())),
         },
         is_super_assign: false,
@@ -485,7 +485,7 @@ fn parse_for_loop_with_range() {
                 iter_vector,
                 Expr::Binary {
                     left: Box::new(Expr::Number("1".into())),
-                    op: BinaryOp::Range,
+                    op: BinaryOp::Seq,
                     right: Box::new(Expr::Number("10".into())),
                 }
             );

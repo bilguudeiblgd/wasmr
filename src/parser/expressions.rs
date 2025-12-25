@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Block, Expr};
+use crate::ast::{Argument, BinaryOp, Block, Expr, ParamDef};
 use crate::types::{Param, ParamKind, Type};
 use crate::lexer::Token;
 
@@ -57,7 +57,7 @@ impl Parser {
             return Some(BinaryOp::Less);
         }
         if self.match_token(&Token::Colon) {
-            return Some(BinaryOp::Range);
+            return Some(BinaryOp::Seq);
         }
         if self.match_token(&Token::Equality) {
             return Some(BinaryOp::Equality)
@@ -136,7 +136,27 @@ impl Parser {
                 let mut args = Vec::new();
                 if !self.check(&Token::RParen) {
                     loop {
-                        args.push(self.parse_expression()?);
+                        // Try to detect named argument: identifier = expression
+                        let arg = if let Some(Token::Identifier(name)) = self.peek() {
+                            // Look ahead to see if next token is '='
+                            if let Some(Token::AssignEqual) = self.peek_nth(1) {
+                                // Named argument: name = value
+                                let name = name.clone();
+                                self.advance(); // consume identifier
+                                self.advance(); // consume '='
+                                let value = self.parse_expression()?;
+                                Argument::Named { name, value }
+                            } else {
+                                // Just a regular expression starting with an identifier
+                                Argument::Positional(self.parse_expression()?)
+                            }
+                        } else {
+                            // Not starting with identifier, must be positional
+                            Argument::Positional(self.parse_expression()?)
+                        };
+
+                        args.push(arg);
+
                         if self.match_token(&Token::Comma) {
                             continue;
                         }
@@ -207,9 +227,12 @@ impl Parser {
                                 self.advance();
                                 self.advance();
                                 self.advance();
-                                params.push(Param {
-                                    name: "...".to_string(),
-                                    kind: ParamKind::VarArgs,
+                                params.push(ParamDef {
+                                    param: Param {
+                                        name: "...".to_string(),
+                                        kind: ParamKind::VarArgs,
+                                    },
+                                    default_value: None,
                                 });
                             } else {
                                 return Err(ParseError::Expected(Token::Dot));
@@ -229,9 +252,20 @@ impl Parser {
                             } else {
                                 return Err(ParseError::Expected(Token::Colon));
                             };
-                            params.push(Param {
-                                name: pname,
-                                kind: ParamKind::Normal(x_type),
+
+                            // optional default value: = expression
+                            let default_value = if self.match_token(&Token::AssignEqual) {
+                                Some(Box::new(self.parse_expression()?))
+                            } else {
+                                None
+                            };
+
+                            params.push(ParamDef {
+                                param: Param {
+                                    name: pname,
+                                    kind: ParamKind::Normal(x_type),
+                                },
+                                default_value,
                             });
                         }
                         if self.match_token(&Token::Comma) {

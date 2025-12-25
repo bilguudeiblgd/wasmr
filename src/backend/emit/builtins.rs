@@ -5,7 +5,7 @@
 //! functions that appear in the source code.
 
 use crate::ir::{BuiltinKind, IRExpr};
-use wasm_encoder::{Function, HeapType, Instruction};
+use wasm_encoder::{Function, HeapType, Instruction, StorageType, ValType};
 
 use super::super::{context::LocalContext, WasmGenerator};
 
@@ -141,6 +141,38 @@ impl WasmGenerator {
                 // Trap execution immediately
                 // This will cause the WASM runtime to halt with an error
                 func.instruction(&Instruction::Unreachable);
+            }
+            BuiltinKind::Vector => {
+                // vec(length: int) creates a vector of given length with default values
+                // Returns a vector struct: (struct (field array_ref) (field length))
+
+                if args.len() != 1 {
+                    return;
+                }
+
+                // vec() returns Vector(Int) by default
+                use crate::types::Type;
+                let elem_ty = Type::Int;
+
+                // Get the vector struct type index
+                let vector_struct_idx = self.ensure_vector_struct_type(&elem_ty);
+
+                // Get the array type index for the data field
+                let storage = StorageType::Val(ValType::I32);
+                let array_type_idx = self.ensure_array_type(&storage);
+
+                // Step 1: Evaluate length and create the array
+                // Stack: [] -> [array_ref]
+                self.gen_expr(func, ctx, &args[0]);
+                func.instruction(&Instruction::ArrayNewDefault(array_type_idx));
+
+                // Step 2: Evaluate length again for the struct field
+                // Stack: [array_ref] -> [array_ref, length]
+                self.gen_expr(func, ctx, &args[0]);
+
+                // Step 3: Create vector struct
+                // Stack: [array_ref, length] -> [vector_struct_ref]
+                func.instruction(&Instruction::StructNew(vector_struct_idx));
             }
         }
     }

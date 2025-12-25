@@ -146,7 +146,7 @@ fn expr_to_r(expr: &Expr) -> String {
             let mut s = "function(".to_string();
             let param_strs: Vec<String> = params
                 .iter()
-                .map(|p| p.name.clone()) // Erase types
+                .map(|p| p.param.name.clone()) // Erase types
                 .collect();
             s.push_str(&param_strs.join(", "));
             s.push_str(") {\n");
@@ -183,14 +183,20 @@ fn expr_to_r(expr: &Expr) -> String {
                 BinaryOp::LessEqual => "<=",
                 BinaryOp::Greater => ">",
                 BinaryOp::GreaterEqual => ">=",
-                BinaryOp::Range => ":",
+                BinaryOp::Seq => ":",
                 BinaryOp::Or => "|",
                 BinaryOp::And => "&",
             };
             format!("({} {} {})", expr_to_r(left), op_str, expr_to_r(right))
         }
         Expr::Call { callee, args } => {
-            let arg_strs: Vec<String> = args.iter().map(|a| expr_to_r(a)).collect();
+            use crate::ast::Argument;
+            let arg_strs: Vec<String> = args.iter().map(|a| {
+                match a {
+                    Argument::Positional(expr) => expr_to_r(expr),
+                    Argument::Named { name, value } => format!("{} = {}", name, expr_to_r(value)),
+                }
+            }).collect();
             format!("{}({})", expr_to_r(callee), arg_strs.join(", "))
         }
         Expr::Index { target, index } => {

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::types::Type;
+use crate::types::{Param, ParamKind, Type};
 use super::types::{BuiltinKind, TyResult, TypeError};
 
 pub struct TypeResolver {
@@ -11,6 +11,9 @@ pub struct TypeResolver {
     pub(crate) builtins: HashMap<String, BuiltinDescriptor>,
     /// For better error messages in returns and handling of varargs
     pub(crate) current_function: Option<FunctionCtx>,
+    /// Function parameter definitions (with defaults) for named argument resolution
+    /// Maps function name to its parameter definitions
+    pub(crate) function_param_defs: HashMap<String, Vec<crate::ast::ParamDef>>,
 }
 
 #[derive(Clone)]
@@ -65,10 +68,34 @@ impl TypeResolver {
                 return_type: Type::Void,
             }
         );
+        builtins.insert(
+            "vec".to_string(),
+            BuiltinDescriptor {
+                kind: BuiltinKind::Vector,
+                return_type: Type::Vector(Type::Int.into()),
+            }
+        );
+
+        let mut function_param_defs = HashMap::new();
+
+        // Register parameter definitions for vec() built-in
+        // vec(length: int = 0) creates a vector of given length
+        function_param_defs.insert(
+            "vec".to_string(),
+            vec![crate::ast::ParamDef {
+                param: Param {
+                    name: "length".to_string(),
+                    kind: ParamKind::Normal(Type::Int),
+                },
+                default_value: Some(Box::new(crate::ast::Expr::Number("0".to_string()))),
+            }],
+        );
+
         Self {
             scope_stack: vec![HashMap::new()],  // Start with one global scope
             builtins,
             current_function: None,
+            function_param_defs,
         }
     }
 

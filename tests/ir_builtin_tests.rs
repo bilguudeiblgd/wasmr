@@ -255,7 +255,7 @@ fn lower_for_loop_with_range() {
             // Check that the range expression is properly typed
             match &iter_expr.kind {
                 IRExprKind::Binary { left, op, right } => {
-                    assert_eq!(*op, BinaryOp::Range);
+                    assert_eq!(*op, BinaryOp::Seq);
                     assert_eq!(left.ty, Type::Int);
                     assert_eq!(right.ty, Type::Int);
                 }

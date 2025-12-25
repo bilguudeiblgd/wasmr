@@ -106,7 +106,7 @@ impl Lexer {
                     self.consume(&chars, &mut current);
                 }
                 '%' => {
-                    if(self.peek_n(&chars, current, 1).unwrap() == '%') {
+                    if self.peek_n(&chars, current, 1).unwrap() == '%' {
                         tokens.push(Token::Mod);
                         self.consume(&chars, &mut current);
                         self.consume(&chars, &mut current);
@@ -170,7 +170,8 @@ impl Lexer {
                             self.consume(&chars, &mut current);
                         }
                         Some(_) => {
-                            panic!("Unexpected value after '='");
+                            tokens.push(Token::AssignEqual);
+                            self.consume(&chars, &mut current);
                         },
                     }
                 }
@@ -325,6 +326,7 @@ pub enum Token {
     GreaterEqual,
     LessEqual,
     Dot,
+    AssignEqual,
 
     // Multi-char tokens
     AssignArrow,      // <-
