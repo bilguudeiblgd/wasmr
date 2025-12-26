@@ -1,17 +1,17 @@
 # Benchmark 2: Vector addition (10k elements)
 # Add two vectors element-wise
 
-n <- 10000
+n: int <- 10000
 
 # Create vector using range
-v1 <- 1:n
-v2 <- 1:n
+v1: vector<int> <- 1:n
+
 # Add vector to itself
-result <- v1 + v2
+result: vector<int> <- v1 + v1
 
 # Sum result to get a single output
-sum <- 0
-j <- 1
+sum: int <- 0
+j: int <- 1
 while (j <= n) {
   sum <- sum + result[j]
   j <- j + 1
