@@ -1,4 +1,4 @@
-my_generator <- function(s: int, e: int, step: int) {
+my_generator <- function(s: int, e: int, step: int): () -> int {
     current <- s
     function() {
         if (current + step < e){

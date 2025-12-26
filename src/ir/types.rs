@@ -97,6 +97,12 @@ pub enum IRExprKind {
         then_branch: IRBlock,
         else_branch: Option<IRBlock>,
     },
+    /// Type cast expression (e.g., double -> int)
+    Cast {
+        expr: Box<IRExpr>,
+        from: Type,
+        to: Type,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

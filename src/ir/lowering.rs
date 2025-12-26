@@ -404,7 +404,15 @@ impl<'a> LowerCtx<'a> {
                             });
                         }
                     }
-                    None => inferred,
+                    None => {
+                        // If variable already exists, preserve its existing type (reassignment)
+                        // Otherwise use inferred type (initial assignment)
+                        if let Some(existing_ty) = self.tr.lookup_var(&name) {
+                            existing_ty
+                        } else {
+                            inferred
+                        }
+                    }
                 };
 
                 // Regular variable assignment - handle super assignment
@@ -548,13 +556,15 @@ impl<'a> LowerCtx<'a> {
                     Type::Vector(elem_ty_box) => {
                         let elem_ty = (**elem_ty_box).clone();
 
-                        // Validate index is Int
-                        if index_ir.ty != Type::Int {
+                        // Allow Double indices (R behavior) - cast to Int automatically
+                        let index_ir = if index_ir.ty == Type::Double || index_ir.ty == Type::Int {
+                            ensure_ty(index_ir, Type::Int)
+                        } else {
                             return Err(TypeError::InvalidIndexType {
                                 index_type: index_ir.ty,
-                                context: "vector index assignment".to_string(),
+                                context: "vector index assignment requires numeric type".to_string(),
                             });
-                        }
+                        };
 
                         // Validate value matches element type
                         let value_ir2 = ensure_ty(value_ir, elem_ty.clone());
@@ -585,10 +595,10 @@ impl<'a> LowerCtx<'a> {
         match expr {
             AstExpr::Number(s) => {
                 // Heuristic: integers have no dot; otherwise Double (matches R's default)
-                let ty = if s.contains('.') {
-                    Type::Double
-                } else {
+                let ty = if s.contains('L') {
                     Type::Int
+                } else {
+                    Type::Double
                 };
                 Ok(IRExpr {
                     kind: IRExprKind::Number(s),
@@ -716,7 +726,21 @@ impl<'a> LowerCtx<'a> {
                 let l = self.lower_expr(*left)?;
                 let r = self.lower_expr(*right)?;
                 match op {
-                    BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => {
+                    BinaryOp::Mod => {
+                        // Modulo only works on integers (no F64 mod in WASM)
+                        // Force both operands to Int
+                        let l2 = ensure_ty(l, Type::Int);
+                        let r2 = ensure_ty(r, Type::Int);
+                        Ok(IRExpr {
+                            kind: IRExprKind::Binary {
+                                left: Box::new(l2),
+                                op,
+                                right: Box::new(r2),
+                            },
+                            ty: Type::Int,
+                        })
+                    }
+                    BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div => {
                         // #TODO: promotion for numerics inside vector or composite types
                         if (matches!(l.ty, Vector(_)) || matches!(r.ty, Vector(_))) {
                             return Ok(IRExpr {
@@ -746,12 +770,14 @@ impl<'a> LowerCtx<'a> {
                     | BinaryOp::GreaterEqual
                     | BinaryOp::Equality
                     | BinaryOp::NotEqual => {
-                        let _ = self.tr.unify_numeric(&l.ty, &r.ty)?;
+                        let res_ty = self.tr.unify_numeric(&l.ty, &r.ty)?;
+                        let l2 = ensure_ty(l, res_ty.clone());
+                        let r2 = ensure_ty(r, res_ty);
                         Ok(IRExpr {
                             kind: IRExprKind::Binary {
-                                left: Box::new(l),
+                                left: Box::new(l2),
                                 op,
-                                right: Box::new(r),
+                                right: Box::new(r2),
                             },
                             ty: Type::Logical,
                         })
@@ -984,13 +1010,15 @@ impl<'a> LowerCtx<'a> {
                     Type::Vector(elem_ty_box) => {
                         let elem_ty = (**elem_ty_box).clone();
 
-                        // Validate index is Int
-                        if index_ir.ty != Type::Int {
+                        // Allow Double indices (R behavior) - cast to Int automatically
+                        let index_ir = if index_ir.ty == Type::Double || index_ir.ty == Type::Int {
+                            ensure_ty(index_ir, Type::Int)
+                        } else {
                             return Err(TypeError::InvalidIndexType {
                                 index_type: index_ir.ty,
-                                context: "vector indexing".to_string(),
+                                context: "vector indexing requires numeric type".to_string(),
                             });
-                        }
+                        };
 
                         Ok(IRExpr {
                             kind: IRExprKind::Index {
@@ -1253,14 +1281,17 @@ impl<'a> LowerCtx<'a> {
                     });
                 }
 
-                // Check that length argument is an integer
-                if !matches!(args[0].ty, Type::Int) {
+                // Accept both Int and Double for length parameter (R allows numeric)
+                // Cast to Int if needed
+                let length_arg = if args[0].ty == Type::Double || args[0].ty == Type::Int {
+                    ensure_ty(args[0].clone(), Type::Int)
+                } else {
                     return Err(TypeError::TypeMismatch {
                         expected: Type::Int,
                         found: args[0].ty.clone(),
-                        context: format!("vec() length parameter"),
+                        context: format!("vec() length parameter must be numeric"),
                     });
-                }
+                };
 
                 // Check that mode argument is a string literal
                 if !matches!(args[1].ty, Type::String) {
@@ -1303,7 +1334,7 @@ impl<'a> LowerCtx<'a> {
                 Ok(IRExpr {
                     kind: IRExprKind::BuiltinCall {
                         builtin: kind,
-                        args,
+                        args: vec![length_arg, args[1].clone()],
                     },
                     ty: vector_type,
                 })
@@ -1312,21 +1343,29 @@ impl<'a> LowerCtx<'a> {
     }
 }
 
-/// Helper: ensure an expression has a desired type, applying implicit numeric promotions virtually.
-fn ensure_ty(mut e: IRExpr, want: Type) -> IRExpr {
+/// Helper: ensure an expression has a desired type, applying implicit numeric conversions.
+/// Creates explicit Cast nodes for type conversions.
+fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
     if e.ty == want {
         return e;
     }
-    // Allow implicit numeric promotions by just changing the expression's result type.
-    // Real codegen can insert casts if needed later.
+    // Allow implicit numeric conversions by inserting Cast nodes
     match (&e.ty, &want) {
-        (Type::Int, Type::Double) => {
-            e.ty = want;
-            e
+        (Type::Int, Type::Double) | (Type::Double, Type::Int) => {
+            IRExpr {
+                kind: IRExprKind::Cast {
+                    expr: Box::new(e.clone()),
+                    from: e.ty.clone(),
+                    to: want.clone(),
+                },
+                ty: want,
+            }
         }
+        // #TODO: handle composite types. Vectors.
         // No other implicit conversions for now
         _ => e,
     }
+    //
 }
 
 /// Convenience function for callers: lower a program without creating a resolver explicitly.

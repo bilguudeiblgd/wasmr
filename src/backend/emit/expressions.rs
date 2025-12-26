@@ -207,6 +207,26 @@ impl WasmGenerator {
             IRExprKind::Unit => {
                 // nothing to push for void; use 0 by convention if a value is required, handled by caller
             }
+            IRExprKind::Cast { expr, from, to } => {
+                // Generate the expression to cast
+                self.gen_expr(func, ctx, expr);
+
+                // Emit the appropriate WASM cast instruction
+                match (from, to) {
+                    (Type::Double, Type::Int) => {
+                        // f64 → i32: truncate with saturation
+                        func.instruction(&Instruction::I32TruncSatF64S);
+                    }
+                    (Type::Int, Type::Double) => {
+                        // i32 → f64: signed conversion
+                        func.instruction(&Instruction::F64ConvertI32S);
+                    }
+                    _ => {
+                        // For other type conversions, no cast needed or not supported
+                        // Type checker should prevent invalid casts
+                    }
+                }
+            }
         }
     }
 

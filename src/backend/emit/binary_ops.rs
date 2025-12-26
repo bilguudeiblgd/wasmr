@@ -86,17 +86,17 @@ impl WasmGenerator {
         left: &IRExpr,
         right: &IRExpr,
     ) {
+        // Vector operations have different type rules (handled by runtime functions)
         if matches!(left.ty, Type::Vector(_)) || matches!(right.ty, Type::Vector(_)) {
             self.gen_vector_binary_op(func, ctx, op, left, right);
             return;
         }
-        // func.instruction(&)
-        // func.instruction(&Instruction::Call())
-        // Verify both operands have the same type (sanity check)
-        // IR should guarantee this, but we check defensively
+
+        // For scalar operations, verify both operands have the same type
+        // IR should guarantee this through ensure_ty and unify_numeric
         if left.ty != right.ty {
             eprintln!(
-                "Warning: Binary operation type mismatch: left={:?}, right={:?}",
+                "Warning: Scalar binary operation type mismatch: left={:?}, right={:?}",
                 left.ty, right.ty
             );
         }

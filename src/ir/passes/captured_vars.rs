@@ -508,6 +508,9 @@ impl CapturedVarsPass {
                     self.collect_references_from_expr(e, refs);
                 }
             }
+            IRExprKind::Cast { expr, .. } => {
+                self.collect_references_from_expr(expr, refs);
+            }
             IRExprKind::If { condition, then_branch, else_branch } => {
                 self.collect_references_from_expr(condition, refs);
                 // Collect from then_branch statements

@@ -262,7 +262,11 @@ impl Lexer {
                 num_str.push(ch);
                 // safe because peek returned Some
                 let _ = self.consume(chars, &mut current);
-            } else {
+            } else if ch == 'L' {
+                let _ = self.consume(chars, &mut current);
+                break;
+            }
+            else {
                 break;
             }
         }

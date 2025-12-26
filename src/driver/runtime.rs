@@ -41,10 +41,10 @@ pub fn load_runtime_ast() -> Option<Vec<crate::ast::Stmt>> {
 
     // Compile each runtime file to AST
     for file_path in r_files {
-        eprintln!("Loading runtime file: {:?}", file_path);
+        // eprintln!("Loading runtime file: {:?}", file_path);
         match compile_runtime_file(&lexer, &file_path) {
             Ok(stmts) => {
-                eprintln!("  Successfully loaded {} statements", stmts.len());
+                // eprintln!("  Successfully loaded {} statements", stmts.len());
                 all_runtime_stmts.extend(stmts);
             }
             Err(e) => {
@@ -62,7 +62,7 @@ pub fn load_runtime_ast() -> Option<Vec<crate::ast::Stmt>> {
     let func_count = all_runtime_stmts.iter().filter(|s| {
         matches!(s, crate::ast::Stmt::VarAssign { value: crate::ast::Expr::FunctionDef { .. }, .. })
     }).count();
-    println!("Successfully loaded {} runtime functions", func_count);
+    // println!("Successfully loaded {} runtime functions", func_count);
     Some(all_runtime_stmts)
 }
 
