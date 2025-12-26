@@ -1,4 +1,4 @@
-use rty_compiler::ast::{BinaryOp, Expr, Stmt};
+use rty_compiler::ast::{Argument, BinaryOp, Block, Expr, ParamDef, Stmt};
 use rty_compiler::types::{Param, ParamKind, Type};
 use rty_compiler::lexer::{Lexer, Token};
 use rty_compiler::parser::Parser;
@@ -56,7 +56,7 @@ fn parse_function_call() {
     let expr = parse_expr("f(1, 2)");
     let expected = Expr::Call {
         callee: Box::new(Expr::Identifier("f".into())),
-        args: vec![Expr::Number("1".into()), Expr::Number("2".into())],
+        args: vec![Argument::Positional(Expr::Number("1".into())), Argument::Positional(Expr::Number("2".into()))],
     };
     assert_eq!(expr, expected);
 }
@@ -66,7 +66,7 @@ fn parse_hello_world() {
     let expr = parse_expr("print(\"Hello world!\")");
     let expected = Expr::Call {
         callee: Box::new(Expr::Identifier("print".into())),
-        args: vec![Expr::XString("Hello world!".into())],
+        args: vec![Argument::Positional(Expr::XString("Hello world!".into()))],
     };
     assert_eq!(expr, expected);
 }
@@ -93,12 +93,12 @@ fn parse_call_and_grouping() {
     let expected = Expr::Call {
         callee: Box::new(Expr::Identifier("f".into())),
         args: vec![
-            Expr::Number("1".into()),
-            Expr::Binary {
+            Argument::Positional(Expr::Number("1".into())),
+            Argument::Positional(Expr::Binary {
                 left: Box::new(Expr::Identifier("x".into())),
                 op: BinaryOp::Plus,
                 right: Box::new(Expr::Number("2".into())),
-            },
+            }),
         ],
     };
     assert_eq!(expr, expected);
@@ -141,9 +141,9 @@ fn parse_block_statement() {
     let stmt = parse_stmt("{ x: int <- 1; y: int <- 2 }");
     match stmt {
         Stmt::Block(body) => {
-            assert_eq!(body.len(), 2);
+            assert_eq!(body.stmts.len(), 2);
             assert_eq!(
-                body[0],
+                body.stmts[0],
                 Stmt::VarAssign {
                     name: "x".into(),
                     x_type: Some(Type::Int),
@@ -152,7 +152,7 @@ fn parse_block_statement() {
                 }
             );
             assert_eq!(
-                body[1],
+                body.stmts[1],
                 Stmt::VarAssign {
                     name: "y".into(),
                     x_type: Some(Type::Int),
@@ -187,15 +187,18 @@ fn parse_function_definition_full() {
                 } => {
                     assert_eq!(
                         params,
-                        &vec![Param {
-                            name: "x".into(),
-                            kind: ParamKind::Normal(Type::Int)
+                        &vec![ParamDef {
+                            param: Param {
+                                name: "x".into(),
+                                kind: ParamKind::Normal(Type::Int)
+                            },
+                            default_value: None
                         }]
                     );
                     assert_eq!(return_type, &Some(Type::Int));
-                    assert_eq!(body.len(), 1);
+                    assert_eq!(body.stmts.len(), 1);
                     assert_eq!(
-                        body[0],
+                        body.stmts[0],
                         Stmt::Return(Some(Expr::Binary {
                             left: Box::new(Expr::Identifier("x".into())),
                             op: BinaryOp::Plus,
@@ -246,9 +249,9 @@ fn parse_vector() {
             value: Expr::Call {
                 callee: Box::new(Expr::Identifier("c".into())),
                 args: vec![
-                    Expr::Number("1".into()),
-                    Expr::Number("2".into()),
-                    Expr::Number("3".into())
+                    Argument::Positional(Expr::Number("1".into())),
+                    Argument::Positional(Expr::Number("2".into())),
+                    Argument::Positional(Expr::Number("3".into()))
                 ]
             },
             is_super_assign: false,
@@ -278,18 +281,24 @@ fn parse_variable_arguments() {
                 } => {
                     assert_eq!(
                         params,
-                        &vec![Param {
-                            name: "...".into(),
-                            kind: ParamKind::VarArgs
+                        &vec![ParamDef {
+                            param: Param {
+                                name: "...".into(),
+                                kind: ParamKind::VarArgs
+                            },
+                            default_value: None
                         }]
                     );
                     assert_eq!(return_type, &None);
                     assert_eq!(
                         body,
-                        &vec![Stmt::Return(Some(Expr::Call {
-                            callee: Box::new(Expr::Identifier("c".into())),
-                            args: vec![Expr::VarArgs]
-                        }))]
+                        &Block {
+                            stmts: vec![Stmt::Return(Some(Expr::Call {
+                                callee: Box::new(Expr::Identifier("c".into())),
+                                args: vec![Argument::Positional(Expr::VarArgs)]
+                            }))],
+                            tail_expr: None
+                        }
                     );
                 }
                 _ => panic!("expected function expression"),
@@ -327,13 +336,19 @@ fn parse_complex_function_with_vectors() {
                     assert_eq!(
                         params,
                         &vec![
-                            Param {
-                                name: "a".into(),
-                                kind: ParamKind::Normal(Type::Vector(Box::new(Type::Int)))
+                            ParamDef {
+                                param: Param {
+                                    name: "a".into(),
+                                    kind: ParamKind::Normal(Type::Vector(Box::new(Type::Int)))
+                                },
+                                default_value: None
                             },
-                            Param {
-                                name: "b".into(),
-                                kind: ParamKind::Normal(Type::Vector(Box::new(Type::Int)))
+                            ParamDef {
+                                param: Param {
+                                    name: "b".into(),
+                                    kind: ParamKind::Normal(Type::Vector(Box::new(Type::Int)))
+                                },
+                                default_value: None
                             }
                         ]
                     );
@@ -341,14 +356,14 @@ fn parse_complex_function_with_vectors() {
                         return_type,
                         &Some(Type::Vector(Box::new(Type::Int)))
                     );
-                    assert_eq!(body.len(), 2);
+                    assert_eq!(body.stmts.len(), 2);
                     // Check the first statement is a variable assignment
-                    match &body[0] {
+                    match &body.stmts[0] {
                         Stmt::VarAssign { name, x_type, .. } => {
                             assert_eq!(name, "result");
                             assert_eq!(
-                                x_type,
-                                &Some(Type::Vector(Box::new(Type::Int)))
+                                *x_type,
+                                Some(Type::Vector(Box::new(Type::Int)))
                             );
                         }
                         _ => panic!("expected var assign"),
@@ -381,12 +396,12 @@ fn parse_if_statement() {
     assert_eq!(prog[0], Stmt::VarAssign { name: "x".into(), x_type: None, value: Expr::Number("15".into()), is_super_assign: false });
     assert_eq!(prog[1], Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("0".into()), is_super_assign: false });
     assert_eq!(prog[2], Stmt::If { condition: Expr::Binary { left: Box::new(Expr::Identifier("x".into())),op: BinaryOp::Greater, right: Box::new(Expr::Number("20".into())) },
-        then_branch: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("1".into()), is_super_assign: false }],
+        then_branch: Block { stmts: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("1".into()), is_super_assign: false }], tail_expr: None },
         else_branch: Some(
-            vec![Stmt::If { condition: Expr::Binary { left: Box::new(Expr::Identifier("x".into())), op: BinaryOp::Equality, right: Box::new(Expr::Number("20".into())) },
-            then_branch: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("2".into()), is_super_assign: false }],
-            else_branch: Some(vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("3".into()), is_super_assign: false }])
-            }]
+            Block { stmts: vec![Stmt::If { condition: Expr::Binary { left: Box::new(Expr::Identifier("x".into())), op: BinaryOp::Equality, right: Box::new(Expr::Number("20".into())) },
+            then_branch: Block { stmts: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("2".into()), is_super_assign: false }], tail_expr: None },
+            else_branch: Some(Block { stmts: vec![Stmt::VarAssign { name: "result".into(), x_type: None, value: Expr::Number("3".into()), is_super_assign: false }], tail_expr: None })
+            }], tail_expr: None }
         ) });
     assert_eq!(prog[3], Stmt::ExprStmt(Expr::Identifier("result".into())));
     
@@ -410,9 +425,9 @@ fn parse_simple_if_without_else() {
                     right: Box::new(Expr::Number("5".into())),
                 }
             );
-            assert_eq!(then_branch.len(), 1);
+            assert_eq!(then_branch.stmts.len(), 1);
             assert_eq!(
-                then_branch[0],
+                then_branch.stmts[0],
                 Stmt::VarAssign {
                     name: "y".into(),
                     x_type: None,
@@ -443,9 +458,9 @@ fn parse_if_with_else() {
                     right: Box::new(Expr::Identifier("b".into())),
                 }
             );
-            assert_eq!(then_branch.len(), 1);
+            assert_eq!(then_branch.stmts.len(), 1);
             assert_eq!(
-                then_branch[0],
+                then_branch.stmts[0],
                 Stmt::VarAssign {
                     name: "x".into(),
                     x_type: None,
@@ -455,9 +470,9 @@ fn parse_if_with_else() {
             );
             assert!(else_branch.is_some());
             let else_stmts = else_branch.unwrap();
-            assert_eq!(else_stmts.len(), 1);
+            assert_eq!(else_stmts.stmts.len(), 1);
             assert_eq!(
-                else_stmts[0],
+                else_stmts.stmts[0],
                 Stmt::VarAssign {
                     name: "x".into(),
                     x_type: None,
@@ -489,9 +504,9 @@ fn parse_for_loop_with_range() {
                     right: Box::new(Expr::Number("10".into())),
                 }
             );
-            assert_eq!(body.len(), 1);
+            assert_eq!(body.stmts.len(), 1);
             assert_eq!(
-                body[0],
+                body.stmts[0],
                 Stmt::VarAssign {
                     name: "sum".into(),
                     x_type: None,
@@ -519,12 +534,12 @@ fn parse_for_loop_with_vector() {
         } => {
             assert_eq!(iter_name, "x");
             assert_eq!(iter_vector, Expr::Identifier("my_vec".into()));
-            assert_eq!(body.len(), 1);
+            assert_eq!(body.stmts.len(), 1);
             assert_eq!(
-                body[0],
+                body.stmts[0],
                 Stmt::ExprStmt(Expr::Call {
                     callee: Box::new(Expr::Identifier("print".into())),
-                    args: vec![Expr::Identifier("x".into())]
+                    args: vec![Argument::Positional(Expr::Identifier("x".into()))]
                 })
             );
         }
