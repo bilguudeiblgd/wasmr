@@ -118,9 +118,35 @@ impl<'a> LowerCtx<'a> {
 
         // Lower tail expression if present
         let (tail_expr, ty) = if let Some(expr) = block.tail_expr {
-            let ir_expr = self.lower_expr(*expr)?;
-            let ty = ir_expr.ty.clone();
-            (Some(Box::new(ir_expr)), ty)
+            // Special case: if tail expression is a function definition, convert it to assignment + identifier
+            // This ensures the function body is properly lowered (same as manual pattern in closure.R)
+            if let AstExpr::FunctionDef { params, return_type, body } = *expr {
+                // Generate unique anonymous function name
+                static ANON_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+                let anon_name = format!("__anon_func_{}", ANON_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+
+                // Create assignment statement for the function definition
+                let func_assign = self.lower_stmt(AstStmt::VarAssign {
+                    name: anon_name.clone(),
+                    x_type: None,
+                    value: AstExpr::FunctionDef {
+                        params,
+                        return_type,
+                        body
+                    },
+                    is_super_assign: false,
+                })?;
+                stmts.push(func_assign);
+
+                // Replace tail expression with identifier referencing the function
+                let ir_expr = self.lower_expr(AstExpr::Identifier(anon_name))?;
+                let ty = ir_expr.ty.clone();
+                (Some(Box::new(ir_expr)), ty)
+            } else {
+                let ir_expr = self.lower_expr(*expr)?;
+                let ty = ir_expr.ty.clone();
+                (Some(Box::new(ir_expr)), ty)
+            }
         } else {
             (None, Type::Void)
         };

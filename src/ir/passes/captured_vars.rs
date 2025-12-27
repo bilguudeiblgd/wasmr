@@ -430,7 +430,7 @@ impl CapturedVarsPass {
             match stmt {
                 IRStmt::VarAssign { name, value, is_super_assign, .. } => {
                     // Collect references from RHS
-                    self.collect_references_from_expr(value, refs);
+                    self.collect_references_from_expr(value, refs, mutations);
 
                     // If super-assign, mark as mutated
                     if *is_super_assign {
@@ -440,30 +440,30 @@ impl CapturedVarsPass {
                     }
                 }
                 IRStmt::ExprStmt(expr) => {
-                    self.collect_references_from_expr(expr, refs);
+                    self.collect_references_from_expr(expr, refs, mutations);
                 }
                 IRStmt::Return(expr) => {
-                    self.collect_references_from_expr(expr, refs);
+                    self.collect_references_from_expr(expr, refs, mutations);
                 }
                 IRStmt::If { condition, then_branch, else_branch, result_ty: _ } => {
-                    self.collect_references_from_expr(condition, refs);
+                    self.collect_references_from_expr(condition, refs, mutations);
                     self.collect_references_and_mutations(&then_branch.stmts, refs, mutations);
                     if let Some(else_stmts) = else_branch {
                         self.collect_references_and_mutations(&else_stmts.stmts, refs, mutations);
                     }
                 }
                 IRStmt::For { iter_expr, body, .. } => {
-                    self.collect_references_from_expr(iter_expr, refs);
+                    self.collect_references_from_expr(iter_expr, refs, mutations);
                     self.collect_references_and_mutations(&body.stmts, refs, mutations);
                 }
                 IRStmt::While { condition, body } => {
-                    self.collect_references_from_expr(condition, refs);
+                    self.collect_references_from_expr(condition, refs, mutations);
                     self.collect_references_and_mutations(&body.stmts, refs, mutations);
                 }
                 IRStmt::IndexAssign { target, index, value } => {
-                    self.collect_references_from_expr(target, refs);
-                    self.collect_references_from_expr(index, refs);
-                    self.collect_references_from_expr(value, refs);
+                    self.collect_references_from_expr(target, refs, mutations);
+                    self.collect_references_from_expr(index, refs, mutations);
+                    self.collect_references_from_expr(value, refs, mutations);
                 }
                 IRStmt::Block(block) => {
                     self.collect_references_and_mutations(&block.stmts, refs, mutations);
@@ -475,92 +475,57 @@ impl CapturedVarsPass {
         }
     }
 
-    /// Collect variable references from an expression
-    fn collect_references_from_expr(&self, expr: &IRExpr, refs: &mut HashSet<String>) {
+    /// Collect variable references and mutations from an expression
+    fn collect_references_from_expr(&self, expr: &IRExpr, refs: &mut HashSet<String>, mutations: &mut HashSet<String>) {
         match &expr.kind {
             IRExprKind::Identifier(name) => {
                 refs.insert(name.clone());
             }
             IRExprKind::Binary { left, right, .. } => {
-                self.collect_references_from_expr(left, refs);
-                self.collect_references_from_expr(right, refs);
+                self.collect_references_from_expr(left, refs, mutations);
+                self.collect_references_from_expr(right, refs, mutations);
             }
             IRExprKind::Unary { operand, .. } => {
-                self.collect_references_from_expr(operand, refs);
+                self.collect_references_from_expr(operand, refs, mutations);
             }
             IRExprKind::Call { callee, args } => {
-                self.collect_references_from_expr(callee, refs);
+                self.collect_references_from_expr(callee, refs, mutations);
                 for arg in args {
-                    self.collect_references_from_expr(arg, refs);
+                    self.collect_references_from_expr(arg, refs, mutations);
                 }
             }
             IRExprKind::BuiltinCall { args, .. } => {
                 for arg in args {
-                    self.collect_references_from_expr(arg, refs);
+                    self.collect_references_from_expr(arg, refs, mutations);
                 }
             }
             IRExprKind::Index { target, index } => {
-                self.collect_references_from_expr(target, refs);
-                self.collect_references_from_expr(index, refs);
+                self.collect_references_from_expr(target, refs, mutations);
+                self.collect_references_from_expr(index, refs, mutations);
             }
             IRExprKind::VectorLiteral(exprs) => {
                 for e in exprs {
-                    self.collect_references_from_expr(e, refs);
+                    self.collect_references_from_expr(e, refs, mutations);
                 }
             }
             IRExprKind::Cast { expr, .. } => {
-                self.collect_references_from_expr(expr, refs);
+                self.collect_references_from_expr(expr, refs, mutations);
             }
             IRExprKind::If { condition, then_branch, else_branch } => {
-                self.collect_references_from_expr(condition, refs);
-                // Collect from then_branch statements
-                for stmt in &then_branch.stmts {
-                    match stmt {
-                        IRStmt::VarAssign { value, .. } | IRStmt::ExprStmt(value) | IRStmt::Return(value) => {
-                            self.collect_references_from_expr(value, refs);
-                        }
-                        IRStmt::If { condition: cond, .. } => {
-                            self.collect_references_from_expr(cond, refs);
-                        }
-                        IRStmt::For { iter_expr, .. } | IRStmt::While { condition: iter_expr, .. } => {
-                            self.collect_references_from_expr(iter_expr, refs);
-                        }
-                        IRStmt::IndexAssign { target, index, value } => {
-                            self.collect_references_from_expr(target, refs);
-                            self.collect_references_from_expr(index, refs);
-                            self.collect_references_from_expr(value, refs);
-                        }
-                        _ => {}
-                    }
-                }
-                // Collect from then_branch tail expression
+                // Collect from condition
+                self.collect_references_from_expr(condition, refs, mutations);
+
+                // Properly collect from then_branch using the statement collection method
+                self.collect_references_and_mutations(&then_branch.stmts, refs, mutations);
                 if let Some(tail) = &then_branch.tail_expr {
-                    self.collect_references_from_expr(tail, refs);
+                    self.collect_references_from_expr(tail, refs, mutations);
                 }
-                // Collect from else_branch if present
+
+                // Properly collect from else_branch if present
                 if let Some(else_block) = else_branch {
-                    for stmt in &else_block.stmts {
-                        match stmt {
-                            IRStmt::VarAssign { value, .. } | IRStmt::ExprStmt(value) | IRStmt::Return(value) => {
-                                self.collect_references_from_expr(value, refs);
-                            }
-                            IRStmt::If { condition: cond, .. } => {
-                                self.collect_references_from_expr(cond, refs);
-                            }
-                            IRStmt::For { iter_expr, .. } | IRStmt::While { condition: iter_expr, .. } => {
-                                self.collect_references_from_expr(iter_expr, refs);
-                            }
-                            IRStmt::IndexAssign { target, index, value } => {
-                                self.collect_references_from_expr(target, refs);
-                                self.collect_references_from_expr(index, refs);
-                                self.collect_references_from_expr(value, refs);
-                            }
-                            _ => {}
-                        }
-                    }
-                    // Collect from else_branch tail expression
+                    self.collect_references_and_mutations(&else_block.stmts, refs, mutations);
                     if let Some(tail) = &else_block.tail_expr {
-                        self.collect_references_from_expr(tail, refs);
+                        self.collect_references_from_expr(tail, refs, mutations);
                     }
                 }
             }

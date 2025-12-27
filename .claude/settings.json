@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(MY_FILE=* cargo run*)",
+      "Bash(MY_FILE=* cargo build*)"
+    ]
+  }
+}

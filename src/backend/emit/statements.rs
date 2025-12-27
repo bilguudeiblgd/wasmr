@@ -138,6 +138,9 @@ impl WasmGenerator {
 
                 func.instruction(&Instruction::If(block_type));
 
+                // Check if then branch always returns (ends with Return statement)
+                let then_returns = then_branch.stmts.last().map_or(false, |s| matches!(s, Stmt::Return(_)));
+
                 // Generate then branch
                 for stmt in &then_branch.stmts {
                     self.gen_stmt(func, ctx, stmt, ret_has_value);
@@ -147,8 +150,12 @@ impl WasmGenerator {
                     self.gen_expr(func, ctx, tail);
                 }
 
-                if let Some(else_block) = else_branch {
+                let else_returns = if let Some(else_block) = else_branch {
                     func.instruction(&Instruction::Else);
+
+                    // Check if else branch always returns
+                    let returns = else_block.stmts.last().map_or(false, |s| matches!(s, Stmt::Return(_)));
+
                     for stmt in &else_block.stmts {
                         self.gen_stmt(func, ctx, stmt, ret_has_value);
                     }
@@ -156,9 +163,18 @@ impl WasmGenerator {
                     if let Some(tail) = &else_block.tail_expr {
                         self.gen_expr(func, ctx, tail);
                     }
-                }
+                    returns
+                } else {
+                    false
+                };
+
                 func.instruction(&Instruction::End);
 
+                // If both branches always return, code after the if is unreachable
+                // Emit unreachable to satisfy WASM stack validation
+                if then_returns && else_returns && ret_has_value {
+                    func.instruction(&Instruction::Unreachable);
+                }
             }
 
 

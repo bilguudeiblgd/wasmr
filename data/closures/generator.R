@@ -1,6 +1,6 @@
 my_generator <- function(s: int, e: int, step: int): () -> int {
     current <- s
-    function() {
+    function(): int {
         if (current + step < e){
             current <<- current + step
             return(current)
@@ -8,12 +8,11 @@ my_generator <- function(s: int, e: int, step: int): () -> int {
         else {
             return(-1)
         }
-
     }
 }
 
-m <- my_generator(1, 10, 1)
-print(m())
-print(m())
-print(m())
-print(m())
+ma <- my_generator(1, 10, 1)
+print(ma())
+print(ma())
+print(ma())
+print(ma())
