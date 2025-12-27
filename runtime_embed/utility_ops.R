@@ -20,6 +20,16 @@ system_sum___vec_int <- function(a: vector<int>): int {
 }
 
 
+# Sum of vector<logical>
+system_sum___vec_logical <- function(a: vector<logical>): int {
+    sum <- 0
+    for(i in a) {
+        sum <- sum + i
+    }
+    return(sum)
+}
+
+
 # Sum of vector<double>
 system_sum___vec_double <- function(a: vector<double>): double {
     sum <- 0.0

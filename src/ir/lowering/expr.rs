@@ -5,6 +5,7 @@ use super::types::types_compatible;
 use super::LowerCtx;
 use crate::ast::{Argument, BinaryOp, Expr as AstExpr};
 use crate::ir::types::{IRExpr, IRExprKind, TyResult, TypeError};
+use crate::ir::TypeResolver;
 use crate::types::Type::Vector;
 use crate::types::{ParamKind, Type};
 
@@ -188,17 +189,250 @@ impl<'a> LowerCtx<'a> {
                     | BinaryOp::GreaterEqual
                     | BinaryOp::Equality
                     | BinaryOp::NotEqual => {
-                        let res_ty = self.tr.unify_numeric(&l.ty, &r.ty)?;
-                        let l2 = ensure_ty(l, res_ty.clone());
-                        let r2 = ensure_ty(r, res_ty);
-                        Ok(IRExpr {
-                            kind: IRExprKind::Binary {
-                                left: Box::new(l2),
-                                op,
-                                right: Box::new(r2),
-                            },
-                            ty: Type::Logical,
-                        })
+                        // Check if we're comparing vectors (vector-vector, vector-scalar, or scalar-vector)
+                        match (&l.ty, &r.ty) {
+                            (Type::Vector(l_elem), Type::Vector(r_elem)) => {
+                                // Vector comparison - call runtime function
+                                let op_name = match op {
+                                    BinaryOp::Less => "less",
+                                    BinaryOp::LessEqual => "less_equal",
+                                    BinaryOp::Greater => "greater",
+                                    BinaryOp::GreaterEqual => "greater_equal",
+                                    BinaryOp::Equality => "equal",
+                                    BinaryOp::NotEqual => "not_equal",
+                                    _ => unreachable!(),
+                                };
+
+                                let elem_type_name = match (l_elem.as_ref(), r_elem.as_ref()) {
+                                    (Type::Int, Type::Int) | (Type::Logical, Type::Logical) | (Type::Int, Type::Logical) | (Type::Logical, Type::Int) => "int",
+                                    (Type::Double, Type::Double) => "double",
+                                    // For mixed types with double, promote to double
+                                    (Type::Int, Type::Double) | (Type::Double, Type::Int)
+                                    | (Type::Logical, Type::Double) | (Type::Double, Type::Logical) => "double",
+                                    _ => {
+                                        return Err(TypeError::UnsupportedOperation {
+                                            op: format!("vector comparison {:?}", op),
+                                            left: l.ty.clone(),
+                                            right: r.ty.clone(),
+                                        });
+                                    }
+                                };
+
+                                // Build the function name: system_vector_{op}___vec_{type}__vec_{type}
+                                let func_name = format!("system_vector_{}___vec_{}__vec_{}", op_name, elem_type_name, elem_type_name);
+
+                                // If types don't match, we need to cast
+                                let l2 = if elem_type_name == "double" && (l_elem.as_ref() == &Type::Int || l_elem.as_ref() == &Type::Logical) {
+                                    ensure_ty(l, Type::Vector(Box::new(Type::Double)))
+                                } else if elem_type_name == "int" && l_elem.as_ref() == &Type::Logical {
+                                    ensure_ty(l, Type::Vector(Box::new(Type::Int)))
+                                } else {
+                                    l
+                                };
+
+                                let r2 = if elem_type_name == "double" && (r_elem.as_ref() == &Type::Int || r_elem.as_ref() == &Type::Logical) {
+                                    ensure_ty(r, Type::Vector(Box::new(Type::Double)))
+                                } else if elem_type_name == "int" && r_elem.as_ref() == &Type::Logical {
+                                    ensure_ty(r, Type::Vector(Box::new(Type::Int)))
+                                } else {
+                                    r
+                                };
+
+                                // Generate a function call
+                                Ok(IRExpr {
+                                    kind: IRExprKind::Call {
+                                        callee: Box::new(IRExpr {
+                                            kind: IRExprKind::Identifier(func_name.clone()),
+                                            ty: Type::Function {
+                                                params: vec![
+                                                    crate::types::Param {
+                                                        name: "a".to_string(),
+                                                        kind: ParamKind::Normal(Type::Vector(Box::new(if elem_type_name == "int" { Type::Int } else { Type::Double }))),
+                                                    },
+                                                    crate::types::Param {
+                                                        name: "b".to_string(),
+                                                        kind: ParamKind::Normal(Type::Vector(Box::new(if elem_type_name == "int" { Type::Int } else { Type::Double }))),
+                                                    },
+                                                ],
+                                                return_type: Box::new(Type::Vector(Box::new(Type::Logical))),
+                                            },
+                                        }),
+                                        args: vec![l2, r2],
+                                    },
+                                    ty: Type::Vector(Box::new(Type::Logical)),
+                                })
+                            }
+                            // Vector-scalar comparison: vector < scalar
+                            (Type::Vector(l_elem), r_ty) if TypeResolver::is_numeric(r_ty) => {
+                                let op_name = match op {
+                                    BinaryOp::Less => "less",
+                                    BinaryOp::LessEqual => "less_equal",
+                                    BinaryOp::Greater => "greater",
+                                    BinaryOp::GreaterEqual => "greater_equal",
+                                    BinaryOp::Equality => "equal",
+                                    BinaryOp::NotEqual => "not_equal",
+                                    _ => unreachable!(),
+                                };
+
+                                // Determine the unified element type
+                                let elem_type_name = match (l_elem.as_ref(), r_ty) {
+                                    (Type::Int, Type::Int) | (Type::Logical, Type::Logical) | (Type::Int, Type::Logical) | (Type::Logical, Type::Int) => "int",
+                                    (Type::Double, Type::Double) => "double",
+                                    (Type::Int, Type::Double) | (Type::Double, Type::Int)
+                                    | (Type::Logical, Type::Double) | (Type::Double, Type::Logical) => "double",
+                                    _ => {
+                                        return Err(TypeError::UnsupportedOperation {
+                                            op: format!("vector-scalar comparison {:?}", op),
+                                            left: l.ty.clone(),
+                                            right: r.ty.clone(),
+                                        });
+                                    }
+                                };
+
+                                // Build function name for vector-vector comparison
+                                let func_name = format!("system_vector_{}___vec_{}__vec_{}", op_name, elem_type_name, elem_type_name);
+
+                                // Cast left vector if needed
+                                let l2 = if elem_type_name == "double" && (l_elem.as_ref() == &Type::Int || l_elem.as_ref() == &Type::Logical) {
+                                    ensure_ty(l, Type::Vector(Box::new(Type::Double)))
+                                } else if elem_type_name == "int" && l_elem.as_ref() == &Type::Logical {
+                                    ensure_ty(l, Type::Vector(Box::new(Type::Int)))
+                                } else {
+                                    l
+                                };
+
+                                // Convert scalar to vector using c()
+                                let r_vec_ty = Type::Vector(Box::new(if elem_type_name == "int" { Type::Int } else { Type::Double }));
+                                let r_scalar = if elem_type_name == "double" && (r_ty == &Type::Int || r_ty == &Type::Logical) {
+                                    ensure_ty(r, Type::Double)
+                                } else if elem_type_name == "int" && r_ty == &Type::Logical {
+                                    ensure_ty(r, Type::Int)
+                                } else {
+                                    r
+                                };
+
+                                // Wrap scalar in c() to make it a vector
+                                let r2 = IRExpr {
+                                    kind: IRExprKind::VectorLiteral(vec![r_scalar]),
+                                    ty: r_vec_ty.clone(),
+                                };
+
+                                Ok(IRExpr {
+                                    kind: IRExprKind::Call {
+                                        callee: Box::new(IRExpr {
+                                            kind: IRExprKind::Identifier(func_name.clone()),
+                                            ty: Type::Function {
+                                                params: vec![
+                                                    crate::types::Param {
+                                                        name: "a".to_string(),
+                                                        kind: ParamKind::Normal(r_vec_ty.clone()),
+                                                    },
+                                                    crate::types::Param {
+                                                        name: "b".to_string(),
+                                                        kind: ParamKind::Normal(r_vec_ty.clone()),
+                                                    },
+                                                ],
+                                                return_type: Box::new(Type::Vector(Box::new(Type::Logical))),
+                                            },
+                                        }),
+                                        args: vec![l2, r2],
+                                    },
+                                    ty: Type::Vector(Box::new(Type::Logical)),
+                                })
+                            }
+                            // Scalar-vector comparison: scalar < vector
+                            (l_ty, Type::Vector(r_elem)) if TypeResolver::is_numeric(l_ty) => {
+                                let op_name = match op {
+                                    BinaryOp::Less => "less",
+                                    BinaryOp::LessEqual => "less_equal",
+                                    BinaryOp::Greater => "greater",
+                                    BinaryOp::GreaterEqual => "greater_equal",
+                                    BinaryOp::Equality => "equal",
+                                    BinaryOp::NotEqual => "not_equal",
+                                    _ => unreachable!(),
+                                };
+
+                                // Determine the unified element type
+                                let elem_type_name = match (l_ty, r_elem.as_ref()) {
+                                    (Type::Int, Type::Int) | (Type::Logical, Type::Logical) | (Type::Int, Type::Logical) | (Type::Logical, Type::Int) => "int",
+                                    (Type::Double, Type::Double) => "double",
+                                    (Type::Int, Type::Double) | (Type::Double, Type::Int)
+                                    | (Type::Logical, Type::Double) | (Type::Double, Type::Logical) => "double",
+                                    _ => {
+                                        return Err(TypeError::UnsupportedOperation {
+                                            op: format!("scalar-vector comparison {:?}", op),
+                                            left: l.ty.clone(),
+                                            right: r.ty.clone(),
+                                        });
+                                    }
+                                };
+
+                                // Build function name for vector-vector comparison
+                                let func_name = format!("system_vector_{}___vec_{}__vec_{}", op_name, elem_type_name, elem_type_name);
+
+                                // Convert scalar to vector using c()
+                                let l_vec_ty = Type::Vector(Box::new(if elem_type_name == "int" { Type::Int } else { Type::Double }));
+                                let l_scalar = if elem_type_name == "double" && (l_ty == &Type::Int || l_ty == &Type::Logical) {
+                                    ensure_ty(l, Type::Double)
+                                } else if elem_type_name == "int" && l_ty == &Type::Logical {
+                                    ensure_ty(l, Type::Int)
+                                } else {
+                                    l
+                                };
+
+                                // Wrap scalar in c() to make it a vector
+                                let l2 = IRExpr {
+                                    kind: IRExprKind::VectorLiteral(vec![l_scalar]),
+                                    ty: l_vec_ty.clone(),
+                                };
+
+                                // Cast right vector if needed
+                                let r2 = if elem_type_name == "double" && (r_elem.as_ref() == &Type::Int || r_elem.as_ref() == &Type::Logical) {
+                                    ensure_ty(r, Type::Vector(Box::new(Type::Double)))
+                                } else if elem_type_name == "int" && r_elem.as_ref() == &Type::Logical {
+                                    ensure_ty(r, Type::Vector(Box::new(Type::Int)))
+                                } else {
+                                    r
+                                };
+
+                                Ok(IRExpr {
+                                    kind: IRExprKind::Call {
+                                        callee: Box::new(IRExpr {
+                                            kind: IRExprKind::Identifier(func_name.clone()),
+                                            ty: Type::Function {
+                                                params: vec![
+                                                    crate::types::Param {
+                                                        name: "a".to_string(),
+                                                        kind: ParamKind::Normal(l_vec_ty.clone()),
+                                                    },
+                                                    crate::types::Param {
+                                                        name: "b".to_string(),
+                                                        kind: ParamKind::Normal(l_vec_ty.clone()),
+                                                    },
+                                                ],
+                                                return_type: Box::new(Type::Vector(Box::new(Type::Logical))),
+                                            },
+                                        }),
+                                        args: vec![l2, r2],
+                                    },
+                                    ty: Type::Vector(Box::new(Type::Logical)),
+                                })
+                            }
+                            _ => {
+                                // Scalar comparison (existing logic)
+                                let res_ty = self.tr.unify_numeric(&l.ty, &r.ty)?;
+                                let l2 = ensure_ty(l, res_ty.clone());
+                                let r2 = ensure_ty(r, res_ty);
+                                Ok(IRExpr {
+                                    kind: IRExprKind::Binary {
+                                        left: Box::new(l2),
+                                        op,
+                                        right: Box::new(r2),
+                                    },
+                                    ty: Type::Logical,
+                                })
+                            }
+                        }
                     }
                     BinaryOp::Or | BinaryOp::And => {
                         if l.ty == Type::Logical && r.ty == Type::Logical {

@@ -109,16 +109,29 @@ impl TypeResolver {
     }
 
     pub(crate) fn is_numeric(t: &Type) -> bool {
-        matches!(t, Type::Int | Type::Double)
+        matches!(t, Type::Int | Type::Double | Type::Logical)
     }
 
     pub(crate) fn promote_numeric(&self, a: &Type, target: &Type) -> Type {
-        // Only promote if both numeric and target is at least as wide
+        // Handle scalar numeric promotions
         if Self::is_numeric(a) && Self::is_numeric(target) {
-            target.clone()
-        } else {
-            a.clone()
+            return target.clone();
         }
+
+        // Handle numeric to logical conversions
+        if Self::is_numeric(a) && matches!(target, Type::Logical) {
+            return target.clone();
+        }
+
+        // Handle vector numeric promotions
+        if let (Type::Vector(a_elem), Type::Vector(target_elem)) = (a, target) {
+            if Self::is_numeric(a_elem) && Self::is_numeric(target_elem) {
+                return target.clone();
+            }
+        }
+
+        // No promotion available
+        a.clone()
     }
 
     pub(crate) fn unify_numeric(&self, l: &Type, r: &Type) -> TyResult<Type> {
@@ -131,12 +144,15 @@ impl TypeResolver {
             });
         }
         let rank = |t: &Type| match t {
-            Int => 0,
-            Double => 1,
+            Logical => 0,
+            Int => 1,
+            Double => 2,
             _ => -1,
         };
         Ok(match (rank(l), rank(r)) {
-            (1, _) | (_, 1) => Double,
+            (0, 0) => Logical,
+            (1, 0) | (0, 1) => Int,
+            (2, _) | (_, 2) => Double,
             _ => Int,
         })
     }

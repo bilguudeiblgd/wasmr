@@ -6,33 +6,95 @@ use crate::ir::types::{IRBlock, IRExpr, IRExprKind, IRStmt, TyResult, TypeError}
 use crate::types::Type::Vector;
 use crate::types::{Param, ParamKind, Type};
 
-/// Type coercion helper (forward declaration - defined in mod.rs)
+/// Type coercion helper - creates Cast nodes for implicit type conversions
+/// The actual conversion logic will be implemented in codegen (using runtime functions for vectors)
 pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
     if e.ty == want {
         return e;
     }
-    // Allow Int -> Double promotion
-    if e.ty == Type::Int && want == Type::Double {
-        return IRExpr {
-            kind: IRExprKind::Cast {
-                expr: Box::new(e.clone()),
-                from: e.ty.clone(),
-                to: Type::Double,
-            },
-            ty: Type::Double,
-        };
+
+    // Scalar numeric conversions
+    match (&e.ty, &want) {
+        // Int <-> Double
+        (Type::Int, Type::Double) | (Type::Double, Type::Int) => {
+            return IRExpr {
+                kind: IRExprKind::Cast {
+                    expr: Box::new(e.clone()),
+                    from: e.ty.clone(),
+                    to: want.clone(),
+                },
+                ty: want,
+            };
+        }
+        // Double -> Logical (boolean casting from double)
+        (Type::Double, Type::Logical) => {
+            return IRExpr {
+                kind: IRExprKind::Cast {
+                    expr: Box::new(e.clone()),
+                    from: e.ty.clone(),
+                    to: Type::Logical,
+                },
+                ty: Type::Logical,
+            };
+        }
+        // Int -> Logical (boolean casting from int)
+        (Type::Int, Type::Logical) => {
+            return IRExpr {
+                kind: IRExprKind::Cast {
+                    expr: Box::new(e.clone()),
+                    from: e.ty.clone(),
+                    to: Type::Logical,
+                },
+                ty: Type::Logical,
+            };
+        }
+        // Logical -> Int (numeric promotion)
+        (Type::Logical, Type::Int) => {
+            return IRExpr {
+                kind: IRExprKind::Cast {
+                    expr: Box::new(e.clone()),
+                    from: e.ty.clone(),
+                    to: Type::Int,
+                },
+                ty: Type::Int,
+            };
+        }
+        // Logical -> Double (numeric promotion)
+        (Type::Logical, Type::Double) => {
+            return IRExpr {
+                kind: IRExprKind::Cast {
+                    expr: Box::new(e.clone()),
+                    from: e.ty.clone(),
+                    to: Type::Double,
+                },
+                ty: Type::Double,
+            };
+        }
+        // Vector conversions (element-wise casting)
+        // The codegen will generate calls to runtime functions that loop through elements
+        (Type::Vector(from_elem), Type::Vector(to_elem)) if from_elem != to_elem => {
+            // Allow vector<int> <-> vector<double> and logical promotions
+            match (from_elem.as_ref(), to_elem.as_ref()) {
+                (Type::Int, Type::Double) | (Type::Double, Type::Int)
+                | (Type::Logical, Type::Int) | (Type::Int, Type::Logical)
+                | (Type::Logical, Type::Double) | (Type::Double, Type::Logical) => {
+                    return IRExpr {
+                        kind: IRExprKind::Cast {
+                            expr: Box::new(e.clone()),
+                            from: e.ty.clone(),
+                            to: want.clone(),
+                        },
+                        ty: want,
+                    };
+                }
+                // Could extend to other vector conversions in the future
+                _ => {}
+            }
+        }
+        _ => {}
     }
-    // Allow Double -> Int demotion (truncation)
-    if e.ty == Type::Double && want == Type::Int {
-        return IRExpr {
-            kind: IRExprKind::Cast {
-                expr: Box::new(e.clone()),
-                from: e.ty.clone(),
-                to: Type::Int,
-            },
-            ty: Type::Int,
-        };
-    }
+
+    // No conversion available - return as-is
     e
 }
 

@@ -65,10 +65,10 @@ impl Parser {
         if self.match_token(&Token::NotEqual) {
             return Some(BinaryOp::NotEqual)
         }
-        if self.match_token(&Token::Greater) {
-            return Some(BinaryOp::Greater);
-        }
         if self.match_token(&Token::GreaterEqual) {
+            return Some(BinaryOp::GreaterEqual);
+        }
+        if self.match_token(&Token::Greater) {
             return Some(BinaryOp::Greater);
         }
         None

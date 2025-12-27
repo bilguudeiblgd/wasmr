@@ -208,22 +208,72 @@ impl WasmGenerator {
                 // nothing to push for void; use 0 by convention if a value is required, handled by caller
             }
             IRExprKind::Cast { expr, from, to } => {
-                // Generate the expression to cast
-                self.gen_expr(func, ctx, expr);
-
-                // Emit the appropriate WASM cast instruction
                 match (from, to) {
+                    // Scalar numeric conversions (using WASM instructions)
                     (Type::Double, Type::Int) => {
                         // f64 → i32: truncate with saturation
+                        self.gen_expr(func, ctx, expr);
                         func.instruction(&Instruction::I32TruncSatF64S);
                     }
                     (Type::Int, Type::Double) => {
                         // i32 → f64: signed conversion
+                        self.gen_expr(func, ctx, expr);
                         func.instruction(&Instruction::F64ConvertI32S);
                     }
+                    // Scalar to boolean conversions
+                    (Type::Double, Type::Logical) | (Type::Int, Type::Logical) => {
+                        // Convert to bool: 0 -> false (0), non-zero -> true (1)
+                        self.gen_expr(func, ctx, expr);
+
+                        if from == &Type::Double {
+                            // f64 != 0.0 -> i32
+                            func.instruction(&Instruction::F64Const(Ieee64::from(0.0)));
+                            func.instruction(&Instruction::F64Ne);  // Compare not equal
+                        } else {
+                            // i32 != 0 -> i32
+                            func.instruction(&Instruction::I32Const(0));
+                            func.instruction(&Instruction::I32Ne);  // Compare not equal
+                        }
+                    }
+                    // Boolean to numeric conversions
+                    (Type::Logical, Type::Int) => {
+                        // logical -> i32: already i32 (0 or 1), just pass through
+                        self.gen_expr(func, ctx, expr);
+                    }
+                    (Type::Logical, Type::Double) => {
+                        // logical -> f64: convert i32 to f64
+                        self.gen_expr(func, ctx, expr);
+                        func.instruction(&Instruction::F64ConvertI32S);
+                    }
+                    // Vector conversions (call runtime functions)
+                    (Type::Vector(from_elem), Type::Vector(to_elem)) => {
+                        let func_name = match (from_elem.as_ref(), to_elem.as_ref()) {
+                            (Type::Int, Type::Double) => "system_cast_vec_int_to_vec_double",
+                            (Type::Double, Type::Int) => "system_cast_vec_double_to_vec_int",
+                            (Type::Logical, Type::Int) => "system_cast_vec_logical_to_vec_int",
+                            (Type::Logical, Type::Double) => "system_cast_vec_logical_to_vec_double",
+                            (Type::Int, Type::Logical) => "system_cast_vec_int_to_vec_logical",
+                            (Type::Double, Type::Logical) => "system_cast_vec_double_to_vec_logical",
+                            _ => {
+                                // Unsupported vector cast - should not happen if type checker is correct
+                                panic!("Unsupported vector cast: {:?} -> {:?}", from_elem, to_elem);
+                            }
+                        };
+
+                        // Generate the vector expression (pushes vector ref onto stack)
+                        self.gen_expr(func, ctx, expr);
+
+                        // Look up the cast function
+                        let func_idx = *self.func_indices.get(func_name)
+                            .unwrap_or_else(|| panic!("Cast function {} not found in runtime", func_name));
+
+                        // Call the runtime cast function
+                        func.instruction(&Instruction::Call(func_idx));
+                    }
                     _ => {
-                        // For other type conversions, no cast needed or not supported
+                        // For other type conversions, just generate the expression
                         // Type checker should prevent invalid casts
+                        self.gen_expr(func, ctx, expr);
                     }
                 }
             }

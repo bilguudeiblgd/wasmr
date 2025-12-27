@@ -61,6 +61,7 @@ impl Parser {
             | (Some(Token::Colon), Token::Colon)
             | (Some(Token::Dot), Token::Dot)
             | (Some(Token::Greater), Token::Greater)
+            | (Some(Token::GreaterEqual), Token::GreaterEqual)
             | (Some(Token::Comma), Token::Comma)
             | (Some(Token::Less), Token::Less)
             | (Some(Token::LessEqual), Token::LessEqual)

@@ -208,5 +208,456 @@ system_vector_div___vec_double__vec_double <- function(a: vector<double>, b: vec
 }
 
 # ============================================================================
+# TYPE CASTING functions
+# ============================================================================
+
+# Cast vector<int> to vector<double>
+system_cast_vec_int_to_vec_double <- function(vec: vector<int>): vector<double> {
+    n <- length(vec)
+    result: vector<double> <- vec(length=n, mode="double")
+
+    for(i in 1:n) {
+        tmp: double <- vec[i]  # Implicit scalar int->double cast
+        result[i] <- tmp
+    }
+
+    return(result)
+}
+
+# Cast vector<double> to vector<int>
+system_cast_vec_double_to_vec_int <- function(vec: vector<double>): vector<int> {
+    n <- length(vec)
+    result: vector<int> <- vec(length=n, mode="int")
+
+    for(i in 1:n) {
+        tmp: int <- vec[i]  # Implicit scalar double->int cast (truncation)
+        result[i] <- tmp
+    }
+
+    return(result)
+}
+
+# ============================================================================
+# COMPARISON operations (return vector<logical>)
+# ============================================================================
+
+# vector<int> < vector<int>
+system_vector_less___vec_int__vec_int <- function(a: vector<int>, b: vector<int>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] < b[b_idx]
+    }
+    return(result)
+}
+
+# vector<double> < vector<double>
+system_vector_less___vec_double__vec_double <- function(a: vector<double>, b: vector<double>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] < b[b_idx]
+    }
+    return(result)
+}
+
+# vector<int> <= vector<int>
+system_vector_less_equal___vec_int__vec_int <- function(a: vector<int>, b: vector<int>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] <= b[b_idx]
+    }
+    return(result)
+}
+
+# vector<double> <= vector<double>
+system_vector_less_equal___vec_double__vec_double <- function(a: vector<double>, b: vector<double>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] <= b[b_idx]
+    }
+    return(result)
+}
+
+# vector<int> > vector<int>
+system_vector_greater___vec_int__vec_int <- function(a: vector<int>, b: vector<int>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] > b[b_idx]
+    }
+    return(result)
+}
+
+# vector<double> > vector<double>
+system_vector_greater___vec_double__vec_double <- function(a: vector<double>, b: vector<double>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] > b[b_idx]
+    }
+    return(result)
+}
+
+# vector<int> >= vector<int>
+system_vector_greater_equal___vec_int__vec_int <- function(a: vector<int>, b: vector<int>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] >= b[b_idx]
+    }
+    return(result)
+}
+
+# vector<double> >= vector<double>
+system_vector_greater_equal___vec_double__vec_double <- function(a: vector<double>, b: vector<double>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] >= b[b_idx]
+    }
+    return(result)
+}
+
+# vector<int> == vector<int>
+system_vector_equal___vec_int__vec_int <- function(a: vector<int>, b: vector<int>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] == b[b_idx]
+    }
+    return(result)
+}
+
+# vector<double> == vector<double>
+system_vector_equal___vec_double__vec_double <- function(a: vector<double>, b: vector<double>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] == b[b_idx]
+    }
+    return(result)
+}
+
+# vector<int> != vector<int>
+system_vector_not_equal___vec_int__vec_int <- function(a: vector<int>, b: vector<int>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] != b[b_idx]
+    }
+    return(result)
+}
+
+# vector<double> != vector<double>
+system_vector_not_equal___vec_double__vec_double <- function(a: vector<double>, b: vector<double>): vector<logical> {
+    n <- length(a)
+    m <- length(b)
+
+    if(n != m & n %% m != 0 & m %% n != 0) {
+        stop("Vector lengths not compatible for recycling")
+    }
+
+    result_len <- max(n, m)
+    result: vector<logical> <- vec(length=result_len, mode="logical")
+
+    for(i in 1:result_len) {
+        a_idx <- ((i - 1) %% n) + 1
+        b_idx <- ((i - 1) %% m) + 1
+        result[i] <- a[a_idx] != b[b_idx]
+    }
+    return(result)
+}
+
+# ============================================================================
 # UTILITY functions
 # ============================================================================
+
+# ============================================================================
+# VECTOR-SCALAR comparison operations (vector op scalar)
+# ============================================================================
+
+# vector<int> < int
+system_vector_less___vec_int__int <- function(a: vector<int>, b: int): vector<logical> {
+    return(system_vector_less___vec_int__vec_int(a, c(b)))
+}
+
+# vector<double> < double
+system_vector_less___vec_double__double <- function(a: vector<double>, b: double): vector<logical> {
+    return(system_vector_less___vec_double__vec_double(a, c(b)))
+}
+
+# vector<int> <= int
+system_vector_less_equal___vec_int__int <- function(a: vector<int>, b: int): vector<logical> {
+    return(system_vector_less_equal___vec_int__vec_int(a, c(b)))
+}
+
+# vector<double> <= double
+system_vector_less_equal___vec_double__double <- function(a: vector<double>, b: double): vector<logical> {
+    return(system_vector_less_equal___vec_double__vec_double(a, c(b)))
+}
+
+# vector<int> > int
+system_vector_greater___vec_int__int <- function(a: vector<int>, b: int): vector<logical> {
+    return(system_vector_greater___vec_int__vec_int(a, c(b)))
+}
+
+# vector<double> > double
+system_vector_greater___vec_double__double <- function(a: vector<double>, b: double): vector<logical> {
+    return(system_vector_greater___vec_double__vec_double(a, c(b)))
+}
+
+# vector<int> >= int
+system_vector_greater_equal___vec_int__int <- function(a: vector<int>, b: int): vector<logical> {
+    return(system_vector_greater_equal___vec_int__vec_int(a, c(b)))
+}
+
+# vector<double> >= double
+system_vector_greater_equal___vec_double__double <- function(a: vector<double>, b: double): vector<logical> {
+    return(system_vector_greater_equal___vec_double__vec_double(a, c(b)))
+}
+
+# vector<int> == int
+system_vector_equal___vec_int__int <- function(a: vector<int>, b: int): vector<logical> {
+    return(system_vector_equal___vec_int__vec_int(a, c(b)))
+}
+
+# vector<double> == double
+system_vector_equal___vec_double__double <- function(a: vector<double>, b: double): vector<logical> {
+    return(system_vector_equal___vec_double__vec_double(a, c(b)))
+}
+
+# vector<int> != int
+system_vector_not_equal___vec_int__int <- function(a: vector<int>, b: int): vector<logical> {
+    return(system_vector_not_equal___vec_int__vec_int(a, c(b)))
+}
+
+# vector<double> != double
+system_vector_not_equal___vec_double__double <- function(a: vector<double>, b: double): vector<logical> {
+    return(system_vector_not_equal___vec_double__vec_double(a, c(b)))
+}
+
+# ============================================================================
+# SCALAR-VECTOR comparison operations (scalar op vector)
+# ============================================================================
+
+# int < vector<int>
+system_vector_less___int__vec_int <- function(a: int, b: vector<int>): vector<logical> {
+    return(system_vector_less___vec_int__vec_int(c(a), b))
+}
+
+# double < vector<double>
+system_vector_less___double__vec_double <- function(a: double, b: vector<double>): vector<logical> {
+    return(system_vector_less___vec_double__vec_double(c(a), b))
+}
+
+# int <= vector<int>
+system_vector_less_equal___int__vec_int <- function(a: int, b: vector<int>): vector<logical> {
+    return(system_vector_less_equal___vec_int__vec_int(c(a), b))
+}
+
+# double <= vector<double>
+system_vector_less_equal___double__vec_double <- function(a: double, b: vector<double>): vector<logical> {
+    return(system_vector_less_equal___vec_double__vec_double(c(a), b))
+}
+
+# int > vector<int>
+system_vector_greater___int__vec_int <- function(a: int, b: vector<int>): vector<logical> {
+    return(system_vector_greater___vec_int__vec_int(c(a), b))
+}
+
+# double > vector<double>
+system_vector_greater___double__vec_double <- function(a: double, b: vector<double>): vector<logical> {
+    return(system_vector_greater___vec_double__vec_double(c(a), b))
+}
+
+# int >= vector<int>
+system_vector_greater_equal___int__vec_int <- function(a: int, b: vector<int>): vector<logical> {
+    return(system_vector_greater_equal___vec_int__vec_int(c(a), b))
+}
+
+# double >= vector<double>
+system_vector_greater_equal___double__vec_double <- function(a: double, b: vector<double>): vector<logical> {
+    return(system_vector_greater_equal___vec_double__vec_double(c(a), b))
+}
+
+# int == vector<int>
+system_vector_equal___int__vec_int <- function(a: int, b: vector<int>): vector<logical> {
+    return(system_vector_equal___vec_int__vec_int(c(a), b))
+}
+
+# double == vector<double>
+system_vector_equal___double__vec_double <- function(a: double, b: vector<double>): vector<logical> {
+    return(system_vector_equal___vec_double__vec_double(c(a), b))
+}
+
+# int != vector<int>
+system_vector_not_equal___int__vec_int <- function(a: int, b: vector<int>): vector<logical> {
+    return(system_vector_not_equal___vec_int__vec_int(c(a), b))
+}
+
+# double != vector<double>
+system_vector_not_equal___double__vec_double <- function(a: double, b: vector<double>): vector<logical> {
+    return(system_vector_not_equal___vec_double__vec_double(c(a), b))
+}
+
+# Vector logical casting functions
+system_cast_vec_logical_to_vec_int <- function(vec: vector<logical>): vector<int> {
+    n <- length(vec)
+    result: vector<int> <- vec(length=n, mode="int")
+    for(i in 1:n) {
+        # FALSE -> 0, TRUE -> 1
+        if(vec[i]) {
+            result[i] <- 1
+        } else {
+            result[i] <- 0
+        }
+    }
+    return(result)
+}
+
+system_cast_vec_logical_to_vec_double <- function(vec: vector<logical>): vector<double> {
+    n <- length(vec)
+    result: vector<double> <- vec(length=n, mode="double")
+    for(i in 1:n) {
+        # FALSE -> 0.0, TRUE -> 1.0
+        if(vec[i]) {
+            result[i] <- 1.0
+        } else {
+            result[i] <- 0.0
+        }
+    }
+    return(result)
+}
+
+system_cast_vec_int_to_vec_logical <- function(vec: vector<int>): vector<logical> {
+    n <- length(vec)
+    result: vector<logical> <- vec(length=n, mode="logical")
+    for(i in 1:n) {
+        # 0 -> FALSE, non-zero -> TRUE
+        result[i] <- vec[i] != 0
+    }
+    return(result)
+}
+
+system_cast_vec_double_to_vec_logical <- function(vec: vector<double>): vector<logical> {
+    n <- length(vec)
+    result: vector<logical> <- vec(length=n, mode="logical")
+    for(i in 1:n) {
+        # 0.0 -> FALSE, non-zero -> TRUE
+        result[i] <- vec[i] != 0.0
+    }
+    return(result)
+}
