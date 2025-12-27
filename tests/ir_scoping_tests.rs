@@ -364,3 +364,18 @@ fn test_nested_function_parameter_shadows_parent() {
 
     assert_eq!(get_main_body_len(&ir), 1);
 }
+
+#[test]
+fn test_double() {
+    // Nested function parameters shadow parent variables
+    let code = r#"
+        x <- 5
+        print(x)
+    "#;
+
+    let prog = parse_program(code);
+    let mut resolver = TypeResolver::new();
+    let ir = IR::from_ast(prog, &mut resolver).expect("IR lowering should succeed");
+
+    assert_eq!(get_main_body_len(&ir), 1);
+}
