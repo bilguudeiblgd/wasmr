@@ -1,4 +1,4 @@
-use rty_compiler::ast::{BinaryOp, Expr, Stmt};
+use rty_compiler::ast::{Argument, BinaryOp, Block, Expr, ParamDef, Stmt};
 use rty_compiler::types::{Param, ParamKind, Type};
 use rty_compiler::ir::{BuiltinKind, IRExprKind, IRProgram, IRStmt, TypeError, TypeResolver, IR};
 use rty_compiler::lexer::{Lexer, Token};
@@ -26,7 +26,7 @@ fn lower(src: &str) -> Result<IRProgram, TypeError> {
 
 fn get_main_body(ir: &IRProgram) -> &[IRStmt] {
     match &ir.main_function {
-        IRStmt::FunctionDef { body, .. } => body,
+        IRStmt::FunctionDef { body, .. } => &body.stmts,
         _ => panic!("main_function should be FunctionDef"),
     }
 }
@@ -57,14 +57,14 @@ fn lowers_builtin_list_of_vectors() {
         value: Expr::Call {
             callee: Box::new(Expr::Identifier("list".into())),
             args: vec![
-                Expr::Call {
+                Argument::Positional(Expr::Call {
                     callee: Box::new(Expr::Identifier("c".into())),
-                    args: vec![Expr::Number("1".into()), Expr::Number("2".into())],
-                },
-                Expr::Call {
+                    args: vec![Argument::Positional(Expr::Number("1".into())), Argument::Positional(Expr::Number("2".into()))],
+                }),
+                Argument::Positional(Expr::Call {
                     callee: Box::new(Expr::Identifier("c".into())),
-                    args: vec![Expr::Number("3".into()), Expr::Number("4".into())],
-                },
+                    args: vec![Argument::Positional(Expr::Number("3".into())), Argument::Positional(Expr::Number("4".into()))],
+                }),
             ],
         },
         is_super_assign: false,
@@ -91,7 +91,7 @@ fn builtin_list_rejects_mixed_types() {
         x_type: None,
         value: Expr::Call {
             callee: Box::new(Expr::Identifier("list".into())),
-            args: vec![Expr::Number("1".into()), Expr::XString("two".into())],
+            args: vec![Argument::Positional(Expr::Number("1".into())), Argument::Positional(Expr::XString("two".into()))],
         },
         is_super_assign: false,
     }];
@@ -114,15 +114,21 @@ fn builtin_c_varargs_forwarding() {
         name: "my".into(),
         x_type: None,
         value: Expr::FunctionDef {
-            params: vec![Param {
-                name: "...".into(),
-                kind: ParamKind::VarArgs,
+            params: vec![ParamDef {
+                param: Param {
+                    name: "...".into(),
+                    kind: ParamKind::VarArgs,
+                },
+                default_value: None,
             }],
             return_type: Some(Type::Vector(Type::Any.into())),
-            body: vec![Stmt::Return(Some(Expr::Call {
-                callee: Box::new(Expr::Identifier("c".into())),
-                args: vec![Expr::VarArgs],
-            }))],
+            body: Block {
+                stmts: vec![Stmt::Return(Some(Expr::Call {
+                    callee: Box::new(Expr::Identifier("c".into())),
+                    args: vec![Argument::Positional(Expr::VarArgs)],
+                }))],
+                tail_expr: None,
+            },
         },
         is_super_assign: false,
     }];
@@ -130,8 +136,8 @@ fn builtin_c_varargs_forwarding() {
     let ir = IR::from_ast(program, &mut resolver).expect("lower failed");
     match &get_main_body(&ir)[0] {
         IRStmt::FunctionDef { body, .. } => {
-            assert_eq!(body.len(), 1);
-            match &body[0] {
+            assert_eq!(body.stmts.len(), 1);
+            match &body.stmts[0] {
                 IRStmt::Return(expr) => match &expr.kind {
                     IRExprKind::VectorLiteral(args) => {
                         assert_eq!(args.len(), 1);
@@ -163,13 +169,14 @@ fn lower_simple_if_without_else() {
             condition,
             then_branch,
             else_branch,
+            result_ty: _,
         } => {
             assert_eq!(condition.ty, Type::Logical);
-            assert_eq!(then_branch.len(), 1);
-            match &then_branch[0] {
+            assert_eq!(then_branch.stmts.len(), 1);
+            match &then_branch.stmts[0] {
                 IRStmt::VarAssign { name, ty, .. } => {
                     assert_eq!(name, "y");
-                    assert_eq!(ty, &Type::Int);
+                    assert_eq!(*ty, Type::Int);
                 }
                 _ => panic!("expected var assign in then branch"),
             }
@@ -195,13 +202,14 @@ fn lower_if_with_else() {
             condition,
             then_branch,
             else_branch,
+            result_ty: _,
         } => {
             assert_eq!(condition.ty, Type::Logical);
-            assert_eq!(then_branch.len(), 1);
-            match &then_branch[0] {
+            assert_eq!(then_branch.stmts.len(), 1);
+            match &then_branch.stmts[0] {
                 IRStmt::VarAssign { name, ty, value, .. } => {
                     assert_eq!(name, "x");
-                    assert_eq!(ty, &Type::Int);
+                    assert_eq!(*ty, Type::Int);
                     assert_eq!(value.ty, Type::Int);
                 }
                 _ => panic!("expected var assign in then branch"),
@@ -209,11 +217,11 @@ fn lower_if_with_else() {
 
             assert!(else_branch.is_some());
             let else_stmts = else_branch.as_ref().unwrap();
-            assert_eq!(else_stmts.len(), 1);
-            match &else_stmts[0] {
+            assert_eq!(else_stmts.stmts.len(), 1);
+            match &else_stmts.stmts[0] {
                 IRStmt::VarAssign { name, ty, value, .. } => {
                     assert_eq!(name, "x");
-                    assert_eq!(ty, &Type::Int);
+                    assert_eq!(*ty, Type::Int);
                     assert_eq!(value.ty, Type::Int);
                 }
                 _ => panic!("expected var assign in else branch"),
@@ -263,11 +271,11 @@ fn lower_for_loop_with_range() {
             }
 
             // Check the loop body
-            assert_eq!(body.len(), 1);
-            match &body[0] {
+            assert_eq!(body.stmts.len(), 1);
+            match &body.stmts[0] {
                 IRStmt::VarAssign { name, ty, value, .. } => {
                     assert_eq!(name, "sum");
-                    assert_eq!(ty, &Type::Int);
+                    assert_eq!(*ty, Type::Int);
                     assert_eq!(value.ty, Type::Int);
                 }
                 _ => panic!("expected var assign in loop body"),
@@ -289,7 +297,7 @@ fn lower_for_loop_with_vector() {
     match &get_main_body(&ir)[0] {
         IRStmt::VarAssign { name, ty, .. } => {
             assert_eq!(name, "my_vec");
-            assert_eq!(ty, &Type::Vector(Box::new(Type::Int)));
+            assert_eq!(*ty, Type::Vector(Box::new(Type::Int)));
         }
         _ => panic!("expected var assign"),
     }
@@ -314,8 +322,8 @@ fn lower_for_loop_with_vector() {
             }
 
             // Check the loop body contains expression statement with builtin call
-            assert_eq!(body.len(), 1);
-            match &body[0] {
+            assert_eq!(body.stmts.len(), 1);
+            match &body.stmts[0] {
                 IRStmt::ExprStmt(expr) => {
                     match &expr.kind {
                         IRExprKind::BuiltinCall { builtin, args } => {
@@ -405,7 +413,7 @@ fn lower_while_loop() {
     match &get_main_body(&ir)[0] {
         IRStmt::VarAssign { name, ty, .. } => {
             assert_eq!(name, "x");
-            assert_eq!(ty, &Type::Int);
+            assert_eq!(*ty, Type::Int);
         }
         _ => panic!("expected var assign"),
     }
@@ -427,11 +435,11 @@ fn lower_while_loop() {
             }
 
             // Check the loop body
-            assert_eq!(body.len(), 1);
-            match &body[0] {
+            assert_eq!(body.stmts.len(), 1);
+            match &body.stmts[0] {
                 IRStmt::VarAssign { name, ty, value, .. } => {
                     assert_eq!(name, "x");
-                    assert_eq!(ty, &Type::Int);
+                    assert_eq!(*ty, Type::Int);
                     assert_eq!(value.ty, Type::Int);
                 }
                 _ => panic!("expected var assign in loop body"),

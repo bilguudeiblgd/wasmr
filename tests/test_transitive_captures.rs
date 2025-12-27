@@ -78,8 +78,6 @@ fn test_transitive_capture_propagation() {
         // x should be marked as mutable because h does super-assignment on it
         assert!(captured_x.is_mutable,
             "x should be mutable because h uses super-assignment");
-
-            meta.captured_vars.iter().map(|c| &c.name).collect::<Vec<_>>());
     } else {
         panic!("g should be a function definition");
     }

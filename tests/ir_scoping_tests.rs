@@ -12,7 +12,7 @@ fn parse_program(s: &str) -> Vec<Stmt> {
 
 fn get_main_body_len(ir: &IRProgram) -> usize {
     match &ir.main_function {
-        IRStmt::FunctionDef { body, .. } => body.len(),
+        IRStmt::FunctionDef { body, .. } => body.stmts.len(),
         _ => panic!("main_function should be FunctionDef"),
     }
 }
