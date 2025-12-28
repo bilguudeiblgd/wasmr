@@ -5,7 +5,6 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use rty_compiler::{driver, lexer, parser::Parser};
-
 fn main() {
     if let Err(e) = run() {
         eprintln!("Error: {e}");
