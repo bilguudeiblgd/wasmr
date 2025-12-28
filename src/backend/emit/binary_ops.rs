@@ -104,12 +104,6 @@ impl WasmGenerator {
         // Use the left operand's type to determine which instruction to emit
         let ty = &left.ty;
 
-        // sign of bad design
-        if matches!(op, BinaryOp::Seq) {
-            self.gen_seq(func, ctx, left, right);
-            return;
-        }
-
         self.gen_expr(func, ctx, left);
         self.gen_expr(func, ctx, right);
 
@@ -162,46 +156,4 @@ impl WasmGenerator {
         }
     }
 
-    pub(crate) fn gen_seq(&mut self, func: &mut Function, _ctx: &LocalContext, left: &IRExpr, right: &IRExpr) {
-        // Check if both are constant numbers
-        let is_const_start = matches!(&left.kind, IRExprKind::Number(_));
-        let is_const_end = matches!(&right.kind, IRExprKind::Number(_));
-
-        if is_const_start && is_const_end {
-            // Constant range - generate at compile time
-            let start = match &left.kind {
-                IRExprKind::Number(num) => num.parse::<i32>().unwrap(),
-                _ => unreachable!()
-            };
-            let end = match &right.kind {
-                IRExprKind::Number(num) => num.parse::<i32>().unwrap(),
-                _ => unreachable!()
-            };
-
-            // Push all elements
-            for i in start..(end + 1) {
-                func.instruction(&Instruction::I32Const(i));
-            }
-
-            // Create the data array
-            let storage = self.storage_type_for(&Type::Int);
-            let array_type_index = self.ensure_array_type(&storage);
-            let array_size = (end - start + 1) as u32;
-            func.instruction(&Instruction::ArrayNewFixed { array_type_index, array_size });
-
-            // Push length
-            func.instruction(&Instruction::I32Const(array_size as i32));
-
-            // Create vector struct: (struct (field data) (field length))
-            let vector_struct_index = self.ensure_vector_struct_type(&Type::Int);
-            func.instruction(&Instruction::StructNew(vector_struct_index));
-        } else {
-            // Dynamic range not yet supported
-            // TODO: Implement dynamic range generation by either:
-            // 1. Desugaring at IR level into a loop that builds the vector
-            // 2. Adding a runtime function to create ranges
-            // 3. Pre-registering temporary variables in variable collection pass
-            panic!("Dynamic range expressions (e.g., 1:n where n is a variable) are not yet supported. Use constant ranges like 1:10 instead.");
-        }
-    }
 }
