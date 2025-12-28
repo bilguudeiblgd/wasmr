@@ -6,8 +6,13 @@ edition = "2024"
 [lib]
 name = "rty_compiler"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-encoder = "0.236.1"
 wasmtime = "36.0.2"
 wasmprinter = "0.236.1"
+wasm-bindgen = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
