@@ -16,40 +16,66 @@ use crate::parser::Parser;
 /// Returns AST statements containing all runtime function definitions,
 /// or None if the directory doesn't exist or no valid files were found.
 pub fn load_runtime_ast() -> Option<Vec<crate::ast::Stmt>> {
-    let runtime_dir = Path::new("runtime_embed");
-
-    if !runtime_dir.exists() {
-        eprintln!("Warning: runtime_embed directory not found");
-        return None;
-    }
-
     let mut all_runtime_stmts = Vec::new();
     let lexer = Lexer::new();
 
-    // Collect all .R files from runtime_embed/
-    let r_files = match collect_runtime_files(runtime_dir) {
-        Ok(files) => files,
-        Err(e) => {
-            eprintln!("Warning: Failed to read runtime_embed directory: {}", e);
-            return None;
-        }
-    };
+    // For WASM: embed runtime files at compile time
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Embedded runtime sources
+        const RUNTIME_SOURCES: &[(&str, &str)] = &[
+            ("numeric_ops.R", include_str!("../../runtime_embed/numeric_ops.R")),
+            ("utility_ops.R", include_str!("../../runtime_embed/utility_ops.R")),
+            ("vector_ops.R", include_str!("../../runtime_embed/vector_ops.R")),
+        ];
 
-    if r_files.is_empty() {
-        return None;
+        for (name, source) in RUNTIME_SOURCES {
+            match compile_runtime_source(&lexer, source) {
+                Ok(stmts) => {
+                    all_runtime_stmts.extend(stmts);
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to compile embedded runtime {}: {}", name, e);
+                }
+            }
+        }
     }
 
-    // Compile each runtime file to AST
-    for file_path in r_files {
-        // eprintln!("Loading runtime file: {:?}", file_path);
-        match compile_runtime_file(&lexer, &file_path) {
-            Ok(stmts) => {
-                // eprintln!("  Successfully loaded {} statements", stmts.len());
-                all_runtime_stmts.extend(stmts);
-            }
+    // For native: load from file system
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let runtime_dir = Path::new("runtime_embed");
+
+        if !runtime_dir.exists() {
+            eprintln!("Warning: runtime_embed directory not found");
+            return None;
+        }
+
+        // Collect all .R files from runtime_embed/
+        let r_files = match collect_runtime_files(runtime_dir) {
+            Ok(files) => files,
             Err(e) => {
-                eprintln!("Warning: Failed to compile runtime file {:?}: {}", file_path, e);
-                // Continue with other files even if one fails
+                eprintln!("Warning: Failed to read runtime_embed directory: {}", e);
+                return None;
+            }
+        };
+
+        if r_files.is_empty() {
+            return None;
+        }
+
+        // Compile each runtime file to AST
+        for file_path in r_files {
+            // eprintln!("Loading runtime file: {:?}", file_path);
+            match compile_runtime_file(&lexer, &file_path) {
+                Ok(stmts) => {
+                    // eprintln!("  Successfully loaded {} statements", stmts.len());
+                    all_runtime_stmts.extend(stmts);
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to compile runtime file {:?}: {}", file_path, e);
+                    // Continue with other files even if one fails
+                }
             }
         }
     }
@@ -59,7 +85,7 @@ pub fn load_runtime_ast() -> Option<Vec<crate::ast::Stmt>> {
     }
 
     // Count function definitions (VarAssign with FunctionDef expression)
-    let func_count = all_runtime_stmts.iter().filter(|s| {
+    let _func_count = all_runtime_stmts.iter().filter(|s| {
         matches!(s, crate::ast::Stmt::VarAssign { value: crate::ast::Expr::FunctionDef { .. }, .. })
     }).count();
     // println!("Successfully loaded {} runtime functions", func_count);
@@ -94,17 +120,23 @@ fn compile_runtime_file(lexer: &Lexer, path: &Path) -> io::Result<Vec<crate::ast
     let mut src = String::new();
     File::open(path)?.read_to_string(&mut src)?;
 
-    // Lex
-    let tokens = lexer.lex(&src);
+    compile_runtime_source(lexer, &src).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Parse error in {:?}: {}", path, e),
+        )
+    })
+}
+
+/// Compile runtime source string to AST statements
+fn compile_runtime_source(lexer: &Lexer, src: &str) -> Result<Vec<crate::ast::Stmt>, String> {
+    // Lex (convert &str to String for lexer)
+    let src_string = src.to_string();
+    let tokens = lexer.lex(&src_string);
 
     // Parse
     let mut parser = Parser::new(tokens);
-    parser.parse_program().map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("Parse error in {:?}: {:?}", path, e),
-        )
-    })
+    parser.parse_program().map_err(|e| format!("{:?}", e))
 }
 
 /// Merge runtime AST with user AST

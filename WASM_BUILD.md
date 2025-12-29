@@ -183,11 +183,21 @@ editor.on('change', debounce(() => {
 </script>
 ```
 
+## Runtime Library Embedding
+
+The compiler includes a runtime library with essential functions like `system_seq` (for the `1:10` range operator), `sum()`, `length()`, and vector operations.
+
+**For WASM builds**, the runtime files are automatically embedded at compile time using Rust's `include_str!` macro. This happens transparently - you don't need to do anything special.
+
+**For native builds**, the runtime files are loaded from the `runtime_embed/` directory at runtime.
+
+This dual approach ensures the compiler works both in browsers (where there's no file system) and natively.
+
 ## Known Issues
 
 1. **Runtime Dependencies**: The current runtime library has circular dependencies on the `max` function which uses name mangling for overload resolution. This may cause compilation errors for some programs. This is being addressed in future updates.
 
-2. **File I/O**: The WASM version only supports string-based compilation (no file system access). All runtime functions must be embedded or provided as strings.
+2. **File I/O**: The WASM version only supports string-based compilation (no file system access). All runtime functions are embedded at compile time.
 
 ## Building for Production
 
