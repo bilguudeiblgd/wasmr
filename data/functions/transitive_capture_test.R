@@ -3,14 +3,14 @@
 # g must capture x to pass it to h
 
 f <- function(): int {
-  x: int <- 1
+  x: int <- 1L
 
   g <- function(): int {
     # g doesn't directly use x
 
     h <- function(): int {
       # h needs x from f's scope
-      x <<- x + 1
+      x <<- x + 1L
       return(x)
     }
 

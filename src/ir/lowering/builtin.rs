@@ -62,7 +62,7 @@ impl<'a> LowerCtx<'a> {
                 let target = numeric_target.unwrap_or(Type::Int);
                 let coerced_args: Vec<IRExpr> = args
                     .into_iter()
-                    .map(|arg| ensure_ty(arg, target.clone()))
+                    .map(|arg| ensure_ty(arg, target.clone(), true))
                     .collect();
                 // #TODO: this makes program not able to initialize C vectors with non-numeric types. We'll extend it with Any types soon as soon as codegen supports.
                 let vector_type = coerced_args.first().unwrap().ty.clone();
@@ -198,7 +198,7 @@ impl<'a> LowerCtx<'a> {
                 // Accept both Int and Double for length parameter (R allows numeric)
                 // Cast to Int if needed
                 let length_arg = if args[0].ty == Type::Double || args[0].ty == Type::Int {
-                    ensure_ty(args[0].clone(), Type::Int)
+                    ensure_ty(args[0].clone(), Type::Int, true)
                 } else {
                     return Err(TypeError::TypeMismatch {
                         expected: Type::Int,

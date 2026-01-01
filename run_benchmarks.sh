@@ -33,7 +33,6 @@ compile_rty() {
 
     # Compile using our compiler (suppress all output)
     MY_FILE="$rty_file" cargo run --bin Rty_compiler --quiet >/dev/null 2>&1
-
     # Check if compilation succeeded (compiler outputs directly to OUT_DIR)
     if [ -f "$wasm_out" ]; then
         echo "$wasm_out"
@@ -71,7 +70,7 @@ declare -a results
 
 # Benchmark files
 benchmarks=(
-    "1_integer_sum:Integer sum (10k elements)"
+    "1_double_sum:Double sum (10k elements)"
     "2_vector_addition:Vector addition (10k)"
     "3_fibonacci:Recursive Fibonacci(25)"
     "4_nested_loops:Nested loops (1M iterations)"

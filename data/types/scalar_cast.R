@@ -11,6 +11,6 @@ a: int <- 1L
 b: logical <- as.logical(a)
 print(b)
 
-c: logical <- 0L
+c: logical <- as.logical(0L)
 d: int <- as.integer(c)
 print(d)

@@ -10,6 +10,24 @@ use crate::types::Type::Vector;
 use crate::types::{ParamKind, Type};
 
 impl<'a> LowerCtx<'a> {
+    /// Helper to convert an IRExpr back to AstExpr for recursive lowering
+    /// Used when we need to re-process an already-lowered expression
+    fn ir_to_ast_expr(&self, ir: &IRExpr) -> AstExpr {
+        match &ir.kind {
+            IRExprKind::Number(s) => AstExpr::Number(s.clone()),
+            IRExprKind::Identifier(name) => AstExpr::Identifier(name.clone()),
+            _ => {
+                // For other cases, use the original number representation
+                // This is a simplified conversion - only used for seq operator
+                match &ir.ty {
+                    Type::Int => AstExpr::Number("0L".to_string()),
+                    Type::Double => AstExpr::Number("0.0".to_string()),
+                    _ => AstExpr::Number("0L".to_string()),
+                }
+            }
+        }
+    }
+
     pub(super) fn lower_expr(&mut self, expr: AstExpr) -> TyResult<IRExpr> {
         match expr {
             AstExpr::Number(s) => {
@@ -130,15 +148,46 @@ impl<'a> LowerCtx<'a> {
                 // Special case: desugar seq operator (from:to) into function call
                 // This allows dynamic ranges to work by calling the runtime function
                 if matches!(op, BinaryOp::Seq) {
-                    // Desugar: from:to  →  system_seq___int___int___int(from, to, 1)
+                    // Lower left and right to determine their types
+                    let left_ir = self.lower_expr(*left)?;
+                    let right_ir = self.lower_expr(*right)?;
+
+                    // Determine the unified type (int or double)
+                    let unified_ty = self.tr.unify_numeric(&left_ir.ty, &right_ir.ty)?;
+
+                    // Build mangled function name based on type
+                    let type_name = match unified_ty {
+                        Type::Int => "int",
+                        Type::Double => "double",
+                        _ => return Err(TypeError::UnsupportedOperation {
+                            op: "sequence operator".to_string(),
+                            left: left_ir.ty,
+                            right: right_ir.ty,
+                        }),
+                    };
+
+                    let func_name = format!("system_seq___{}___{}___{}", type_name, type_name, type_name);
+
+                    // Create the "by" argument with the same type
+                    let by_expr = match unified_ty {
+                        Type::Int => AstExpr::Number("1L".to_string()),
+                        Type::Double => AstExpr::Number("1.0".to_string()),
+                        _ => unreachable!(),
+                    };
+
+                    // Reconstruct as AST expressions for recursive lowering
+                    let left_ast = self.ir_to_ast_expr(&left_ir);
+                    let right_ast = self.ir_to_ast_expr(&right_ir);
+
                     let seq_call = AstExpr::Call {
-                        callee: Box::new(AstExpr::Identifier("system_seq___int___int___int".to_string())),
+                        callee: Box::new(AstExpr::Identifier(func_name)),
                         args: vec![
-                            Argument::Positional(*left),
-                            Argument::Positional(*right),
-                            Argument::Positional(AstExpr::Number("1".to_string())), // by = 1
+                            Argument::Positional(left_ast),
+                            Argument::Positional(right_ast),
+                            Argument::Positional(by_expr),
                         ],
                     };
+
                     return self.lower_expr(seq_call);
                 }
 
@@ -148,8 +197,8 @@ impl<'a> LowerCtx<'a> {
                     BinaryOp::Mod => {
                         // Modulo only works on integers (no F64 mod in WASM)
                         // Force both operands to Int
-                        let l2 = ensure_ty(l, Type::Int);
-                        let r2 = ensure_ty(r, Type::Int);
+                        let l2 = ensure_ty(l, Type::Int, true);
+                        let r2 = ensure_ty(r, Type::Int, true);
                         Ok(IRExpr {
                             kind: IRExprKind::Binary {
                                 left: Box::new(l2),
@@ -172,8 +221,8 @@ impl<'a> LowerCtx<'a> {
                             });
                         }
                         let res_ty = self.tr.unify_numeric(&l.ty, &r.ty)?;
-                        let l2 = ensure_ty(l, res_ty.clone());
-                        let r2 = ensure_ty(r, res_ty.clone());
+                        let l2 = ensure_ty(l, res_ty.clone(), false);
+                        let r2 = ensure_ty(r, res_ty.clone(), false);
                         Ok(IRExpr {
                             kind: IRExprKind::Binary {
                                 left: Box::new(l2),
@@ -223,17 +272,17 @@ impl<'a> LowerCtx<'a> {
 
                                 // If types don't match, we need to cast
                                 let l2 = if elem_type_name == "double" && (l_elem.as_ref() == &Type::Int || l_elem.as_ref() == &Type::Logical) {
-                                    ensure_ty(l, Type::Vector(Box::new(Type::Double)))
+                                    ensure_ty(l, Type::Vector(Box::new(Type::Double)), false)
                                 } else if elem_type_name == "int" && l_elem.as_ref() == &Type::Logical {
-                                    ensure_ty(l, Type::Vector(Box::new(Type::Int)))
+                                    ensure_ty(l, Type::Vector(Box::new(Type::Int)), false)
                                 } else {
                                     l
                                 };
 
                                 let r2 = if elem_type_name == "double" && (r_elem.as_ref() == &Type::Int || r_elem.as_ref() == &Type::Logical) {
-                                    ensure_ty(r, Type::Vector(Box::new(Type::Double)))
+                                    ensure_ty(r, Type::Vector(Box::new(Type::Double)), false)
                                 } else if elem_type_name == "int" && r_elem.as_ref() == &Type::Logical {
-                                    ensure_ty(r, Type::Vector(Box::new(Type::Int)))
+                                    ensure_ty(r, Type::Vector(Box::new(Type::Int)), false)
                                 } else {
                                     r
                                 };
@@ -294,9 +343,9 @@ impl<'a> LowerCtx<'a> {
 
                                 // Cast left vector if needed
                                 let l2 = if elem_type_name == "double" && (l_elem.as_ref() == &Type::Int || l_elem.as_ref() == &Type::Logical) {
-                                    ensure_ty(l, Type::Vector(Box::new(Type::Double)))
+                                    ensure_ty(l, Type::Vector(Box::new(Type::Double)), false)
                                 } else if elem_type_name == "int" && l_elem.as_ref() == &Type::Logical {
-                                    ensure_ty(l, Type::Vector(Box::new(Type::Int)))
+                                    ensure_ty(l, Type::Vector(Box::new(Type::Int)), false)
                                 } else {
                                     l
                                 };
@@ -304,9 +353,9 @@ impl<'a> LowerCtx<'a> {
                                 // Convert scalar to vector using c()
                                 let r_vec_ty = Type::Vector(Box::new(if elem_type_name == "int" { Type::Int } else { Type::Double }));
                                 let r_scalar = if elem_type_name == "double" && (r_ty == &Type::Int || r_ty == &Type::Logical) {
-                                    ensure_ty(r, Type::Double)
+                                    ensure_ty(r, Type::Double, false)
                                 } else if elem_type_name == "int" && r_ty == &Type::Logical {
-                                    ensure_ty(r, Type::Int)
+                                    ensure_ty(r, Type::Int, false)
                                 } else {
                                     r
                                 };
@@ -373,9 +422,9 @@ impl<'a> LowerCtx<'a> {
                                 // Convert scalar to vector using c()
                                 let l_vec_ty = Type::Vector(Box::new(if elem_type_name == "int" { Type::Int } else { Type::Double }));
                                 let l_scalar = if elem_type_name == "double" && (l_ty == &Type::Int || l_ty == &Type::Logical) {
-                                    ensure_ty(l, Type::Double)
+                                    ensure_ty(l, Type::Double, false)
                                 } else if elem_type_name == "int" && l_ty == &Type::Logical {
-                                    ensure_ty(l, Type::Int)
+                                    ensure_ty(l, Type::Int, false)
                                 } else {
                                     l
                                 };
@@ -388,9 +437,9 @@ impl<'a> LowerCtx<'a> {
 
                                 // Cast right vector if needed
                                 let r2 = if elem_type_name == "double" && (r_elem.as_ref() == &Type::Int || r_elem.as_ref() == &Type::Logical) {
-                                    ensure_ty(r, Type::Vector(Box::new(Type::Double)))
+                                    ensure_ty(r, Type::Vector(Box::new(Type::Double)), false)
                                 } else if elem_type_name == "int" && r_elem.as_ref() == &Type::Logical {
-                                    ensure_ty(r, Type::Vector(Box::new(Type::Int)))
+                                    ensure_ty(r, Type::Vector(Box::new(Type::Int)), false)
                                 } else {
                                     r
                                 };
@@ -421,8 +470,8 @@ impl<'a> LowerCtx<'a> {
                             _ => {
                                 // Scalar comparison (existing logic)
                                 let res_ty = self.tr.unify_numeric(&l.ty, &r.ty)?;
-                                let l2 = ensure_ty(l, res_ty.clone());
-                                let r2 = ensure_ty(r, res_ty);
+                                let l2 = ensure_ty(l, res_ty.clone(), false);
+                                let r2 = ensure_ty(r, res_ty, false);
                                 Ok(IRExpr {
                                     kind: IRExprKind::Binary {
                                         left: Box::new(l2),
@@ -547,7 +596,7 @@ impl<'a> LowerCtx<'a> {
                             ParamKind::Normal(ty) => ty,
                             ParamKind::VarArgs => unreachable!("variadic params already rejected"),
                         };
-                        let a_ir2 = ensure_ty(arg_ir, expected_ty.clone());
+                        let a_ir2 = ensure_ty(arg_ir, expected_ty.clone(), false);
                         if !types_compatible(&a_ir2.ty, &expected_ty) {
                             return Err(TypeError::TypeMismatch {
                                 expected: expected_ty,
@@ -625,7 +674,7 @@ impl<'a> LowerCtx<'a> {
                             ParamKind::Normal(ty) => ty,
                             ParamKind::VarArgs => unreachable!("variadic params already rejected"),
                         };
-                        let a_ir2 = ensure_ty(a_ir, expected_ty.clone());
+                        let a_ir2 = ensure_ty(a_ir, expected_ty.clone(), false);
                         if !types_compatible(&a_ir2.ty, &expected_ty) {
                             return Err(TypeError::TypeMismatch {
                                 expected: expected_ty,
@@ -664,7 +713,7 @@ impl<'a> LowerCtx<'a> {
 
                         // Allow Double indices (R behavior) - cast to Int automatically
                         let index_ir = if index_ir.ty == Type::Double || index_ir.ty == Type::Int {
-                            ensure_ty(index_ir, Type::Int)
+                            ensure_ty(index_ir, Type::Int, true)
                         } else {
                             return Err(TypeError::InvalidIndexType {
                                 index_type: index_ir.ty,

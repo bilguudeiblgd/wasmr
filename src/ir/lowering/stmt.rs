@@ -14,7 +14,7 @@ use crate::types::{Param, ParamKind, Type};
 ///
 /// Note: For variable assignments with incompatible vector types, the type checker
 /// will catch the error BEFORE calling ensure_ty by checking types_compatible().
-pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
+pub(super) fn ensure_ty(e: IRExpr, want: Type, allow_demoting: bool) -> IRExpr {
     if e.ty == want {
         return e;
     }
@@ -36,6 +36,9 @@ pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
         // Note: This allows scalar literal conversions like 1.0 -> 1
         // Vector conversions are prevented by promote_numeric()
         (Type::Double, Type::Int) => {
+            if !allow_demoting {
+                panic!("ensure_ty: unexpected type conversion from {:?} to {:?}", e.ty, want);
+            }
             return IRExpr {
                 kind: IRExprKind::Cast {
                     expr: Box::new(e.clone()),
@@ -47,6 +50,9 @@ pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
         }
         // Double -> Logical (boolean casting from double)
         (Type::Double, Type::Logical) => {
+            if !allow_demoting {
+                panic!("ensure_ty: unexpected type conversion from {:?} to {:?}", e.ty, want);
+            }
             return IRExpr {
                 kind: IRExprKind::Cast {
                     expr: Box::new(e.clone()),
@@ -58,6 +64,9 @@ pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
         }
         // Int -> Logical (boolean casting from int)
         (Type::Int, Type::Logical) => {
+            if !allow_demoting {
+                panic!("ensure_ty: unexpected type conversion from {:?} to {:?}", e.ty, want);
+            }
             return IRExpr {
                 kind: IRExprKind::Cast {
                     expr: Box::new(e.clone()),
@@ -95,9 +104,9 @@ pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
         (Type::Vector(from_elem), Type::Vector(to_elem)) if from_elem != to_elem => {
             // Allow vector<int> <-> vector<double> and logical promotions
             match (from_elem.as_ref(), to_elem.as_ref()) {
-                (Type::Int, Type::Double) | (Type::Double, Type::Int)
-                | (Type::Logical, Type::Int) | (Type::Int, Type::Logical)
-                | (Type::Logical, Type::Double) | (Type::Double, Type::Logical) => {
+                (Type::Int, Type::Double)
+                | (Type::Logical, Type::Int)
+                | (Type::Logical, Type::Double) => {
                     return IRExpr {
                         kind: IRExprKind::Cast {
                             expr: Box::new(e.clone()),
@@ -107,10 +116,14 @@ pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
                         ty: want,
                     };
                 }
-                _ => {}
+                _ => {
+                    panic!("ensure_ty: unexpected vector conversion from {:?} to {:?}", e.ty, want);
+                }
             }
         }
-        _ => {}
+        _ => {
+            // functional ones are allowed
+        }
     }
 
     // No conversion available - return as-is
@@ -347,7 +360,7 @@ impl<'a> LowerCtx<'a> {
                 Ok(IRStmt::VarAssign {
                     name,
                     ty: final_ty.clone(),
-                    value: ensure_ty(val, final_ty),
+                    value: ensure_ty(val, final_ty, false),
                     is_super_assign,
                 })
             }
@@ -365,7 +378,7 @@ impl<'a> LowerCtx<'a> {
                             context: format!("return in {}", func_name),
                         });
                     }
-                    let e2 = ensure_ty(e, func_ret.clone());
+                    let e2 = ensure_ty(e, func_ret.clone(), false);
                     e2
                 } else {
                     if func_ret != Type::Void {
@@ -478,7 +491,7 @@ impl<'a> LowerCtx<'a> {
 
                         // Allow Double indices (R behavior) - cast to Int automatically
                         let index_ir = if index_ir.ty == Type::Double || index_ir.ty == Type::Int {
-                            ensure_ty(index_ir, Type::Int)
+                            ensure_ty(index_ir, Type::Int, true)
                         } else {
                             return Err(TypeError::InvalidIndexType {
                                 index_type: index_ir.ty,
@@ -487,7 +500,7 @@ impl<'a> LowerCtx<'a> {
                         };
 
                         // Validate value matches element type
-                        let value_ir2 = ensure_ty(value_ir, elem_ty.clone());
+                        let value_ir2 = ensure_ty(value_ir, elem_ty.clone(), false);
                         if value_ir2.ty != elem_ty {
                             return Err(TypeError::TypeMismatch {
                                 expected: elem_ty,

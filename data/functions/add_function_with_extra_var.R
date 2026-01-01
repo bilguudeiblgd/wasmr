@@ -1,4 +1,4 @@
-add <- function(a: int, b: int): int {
+add <- function(a: double, b: double): double {
     return (a + b)
 }
 

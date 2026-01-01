@@ -1,5 +1,5 @@
-# Benchmark 1: Integer sum (10k elements)
-# Sum all integers from 1 to 10000
+# Benchmark 1: Double sum (10k elements)
+# Sum all doubles from 1 to 10000
 
 sum_integers <- function(n) {
   total <- 0

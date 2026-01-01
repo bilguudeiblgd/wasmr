@@ -17,14 +17,14 @@ is_positive <- function(x: int) {
 
 # No tail expression - should default to Any
 do_nothing <- function() {
-    x: int <- 5
+    x: int <- 5L
 }
 
-result1: int <- add_explicit(3, 4)
+result1: int <- add_explicit(3L, 4L)
 print(result1)
 
-result2: int <- add_inferred(10, 20)
+result2: int <- add_inferred(10L, 20L)
 print(result2)
 
-result3: logical <- is_positive(5)
+result3: logical <- is_positive(5L)
 print(result3)

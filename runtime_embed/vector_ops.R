@@ -18,7 +18,7 @@ system_vector_add___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     result_len <- max(n, m)
     result: vector<int> <- vec(length=result_len, mode="int")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] + b[b_idx]
@@ -38,7 +38,7 @@ system_vector_add___vec_double__vec_double <- function(a: vector<double>, b: vec
     result_len <- max(n, m)
     result: vector<double> <- vec(length=result_len, mode="double")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] + b[b_idx]
@@ -90,7 +90,7 @@ system_vector_sub___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     result_len <- max(n, m)
     result: vector<int> <- vec(length=result_len, mode="int")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] - b[b_idx]
@@ -110,7 +110,7 @@ system_vector_sub___vec_double__vec_double <- function(a: vector<double>, b: vec
     result_len <- max(n, m)
     result: vector<double> <- vec(length=result_len, mode="double")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] - b[b_idx]
@@ -134,7 +134,7 @@ system_vector_mul___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     result_len <- max(n, m)
     result: vector<int> <- vec(length=result_len, mode="int")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] * b[b_idx]
@@ -154,7 +154,7 @@ system_vector_mul___vec_double__vec_double <- function(a: vector<double>, b: vec
     result_len <- max(n, m)
     result: vector<double> <- vec(length=result_len, mode="double")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] * b[b_idx]
@@ -178,7 +178,7 @@ system_vector_div___vec_int__vec_int <- function(a: vector<int>, b: vector<int>)
     result_len <- max(n, m)
     result: vector<int> <- vec(length=result_len, mode="int")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] / b[b_idx]
@@ -199,7 +199,7 @@ system_vector_div___vec_double__vec_double <- function(a: vector<double>, b: vec
     result_len <- max(n, m)
     result: vector<double> <- vec(length=result_len, mode="double")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] / b[b_idx]
@@ -216,7 +216,7 @@ system_cast_vec_int_to_vec_double <- function(vec: vector<int>): vector<double> 
     n <- length(vec)
     result: vector<double> <- vec(length=n, mode="double")
 
-    for(i in 1:n) {
+    for(i in 1L:n) {
         result[i] <- vec[i]
     }
 
@@ -228,7 +228,7 @@ system_cast_vec_double_to_vec_int <- function(vec: vector<double>): vector<int> 
     n <- length(vec)
     result: vector<int> <- vec(length=n, mode="int")
 
-    for(i in 1:n) {
+    for(i in 1L:n) {
         result[i] <- as.integer(vec[i])
     }
 
@@ -251,7 +251,7 @@ system_vector_less___vec_int__vec_int <- function(a: vector<int>, b: vector<int>
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] < b[b_idx]
@@ -271,7 +271,7 @@ system_vector_less___vec_double__vec_double <- function(a: vector<double>, b: ve
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] < b[b_idx]
@@ -291,7 +291,7 @@ system_vector_less_equal___vec_int__vec_int <- function(a: vector<int>, b: vecto
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] <= b[b_idx]
@@ -311,7 +311,7 @@ system_vector_less_equal___vec_double__vec_double <- function(a: vector<double>,
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] <= b[b_idx]
@@ -331,7 +331,7 @@ system_vector_greater___vec_int__vec_int <- function(a: vector<int>, b: vector<i
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] > b[b_idx]
@@ -351,7 +351,7 @@ system_vector_greater___vec_double__vec_double <- function(a: vector<double>, b:
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] > b[b_idx]
@@ -371,7 +371,7 @@ system_vector_greater_equal___vec_int__vec_int <- function(a: vector<int>, b: ve
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] >= b[b_idx]
@@ -391,7 +391,7 @@ system_vector_greater_equal___vec_double__vec_double <- function(a: vector<doubl
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] >= b[b_idx]
@@ -411,7 +411,7 @@ system_vector_equal___vec_int__vec_int <- function(a: vector<int>, b: vector<int
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] == b[b_idx]
@@ -431,7 +431,7 @@ system_vector_equal___vec_double__vec_double <- function(a: vector<double>, b: v
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] == b[b_idx]
@@ -451,7 +451,7 @@ system_vector_not_equal___vec_int__vec_int <- function(a: vector<int>, b: vector
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] != b[b_idx]
@@ -471,7 +471,7 @@ system_vector_not_equal___vec_double__vec_double <- function(a: vector<double>, 
     result_len <- max(n, m)
     result: vector<logical> <- vec(length=result_len, mode="logical")
 
-    for(i in 1:result_len) {
+    for(i in 1L:result_len) {
         a_idx <- ((i - 1) %% n) + 1
         b_idx <- ((i - 1) %% m) + 1
         result[i] <- a[a_idx] != b[b_idx]
@@ -615,12 +615,12 @@ system_vector_not_equal___double__vec_double <- function(a: double, b: vector<do
 system_cast_vec_logical_to_vec_int <- function(vec: vector<logical>): vector<int> {
     n <- length(vec)
     result: vector<int> <- vec(length=n, mode="int")
-    for(i in 1:n) {
+    for(i in 1L:n) {
         # FALSE -> 0, TRUE -> 1
         if(vec[i]) {
-            result[i] <- 1
+            result[i] <- 1L
         } else {
-            result[i] <- 0
+            result[i] <- 0L
         }
     }
     return(result)
@@ -629,7 +629,7 @@ system_cast_vec_logical_to_vec_int <- function(vec: vector<logical>): vector<int
 system_cast_vec_logical_to_vec_double <- function(vec: vector<logical>): vector<double> {
     n <- length(vec)
     result: vector<double> <- vec(length=n, mode="double")
-    for(i in 1:n) {
+    for(i in 1L:n) {
         # FALSE -> 0.0, TRUE -> 1.0
         if(vec[i]) {
             result[i] <- 1.0
@@ -643,7 +643,7 @@ system_cast_vec_logical_to_vec_double <- function(vec: vector<logical>): vector<
 system_cast_vec_int_to_vec_logical <- function(vec: vector<int>): vector<logical> {
     n <- length(vec)
     result: vector<logical> <- vec(length=n, mode="logical")
-    for(i in 1:n) {
+    for(i in 1L:n) {
         # 0 -> FALSE, non-zero -> TRUE
         result[i] <- vec[i] != 0
     }
@@ -653,7 +653,7 @@ system_cast_vec_int_to_vec_logical <- function(vec: vector<int>): vector<logical
 system_cast_vec_double_to_vec_logical <- function(vec: vector<double>): vector<logical> {
     n <- length(vec)
     result: vector<logical> <- vec(length=n, mode="logical")
-    for(i in 1:n) {
+    for(i in 1L:n) {
         # 0.0 -> FALSE, non-zero -> TRUE
         result[i] <- vec[i] != 0.0
     }

@@ -1,9 +1,9 @@
 # Simple closure example - counter function with types
 make_counter <- function(): () -> int {
-    count: int <- 0
+    count: int <- 0L
 
     increment <- function(): int {
-        count <<- count + 1
+        count <<- count + 1L
         return(count)
     }
 
