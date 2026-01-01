@@ -188,6 +188,158 @@ impl WasmGenerator {
                 // Stack: [array_ref, length] -> [vector_struct_ref]
                 func.instruction(&Instruction::StructNew(vector_struct_idx));
             }
+            BuiltinKind::AsInt => {
+                // as.integer(x) casts x to int (scalars emit instructions directly, vectors call runtime)
+                if args.is_empty() {
+                    return;
+                }
+
+                let arg = &args[0];
+                use crate::types::Type;
+
+                match &arg.ty {
+                    Type::Int => {
+                        // Already int - just generate the expression
+                        self.gen_expr(func, ctx, arg);
+                    }
+                    Type::Double => {
+                        // Scalar cast: double -> int
+                        self.gen_expr(func, ctx, arg);
+                        func.instruction(&Instruction::I32TruncSatF64S);
+                    }
+                    Type::Logical => {
+                        // Logical -> int: already i32, just pass through
+                        self.gen_expr(func, ctx, arg);
+                    }
+                    Type::Vector(elem_ty) => {
+                        // Vector cast - call runtime function
+                        let func_name = match elem_ty.as_ref() {
+                            Type::Int => {
+                                // Already vector<int> - just pass through
+                                self.gen_expr(func, ctx, arg);
+                                return;
+                            }
+                            Type::Double => "system_cast_vec_double_to_vec_int",
+                            Type::Logical => "system_cast_vec_logical_to_vec_int",
+                            _ => {
+                                // Unsupported - should not happen due to type checking
+                                self.gen_expr(func, ctx, arg);
+                                return;
+                            }
+                        };
+
+                        self.gen_expr(func, ctx, arg);
+                        let func_idx = *self.func_indices.get(func_name)
+                            .unwrap_or_else(|| panic!("Cast function {} not found in runtime", func_name));
+                        func.instruction(&Instruction::Call(func_idx));
+                    }
+                    _ => {
+                        // Unsupported type - should not happen due to type checking
+                        self.gen_expr(func, ctx, arg);
+                    }
+                }
+            }
+            BuiltinKind::AsDouble => {
+                // as.double(x) casts x to double (scalars emit instructions directly, vectors call runtime)
+                if args.is_empty() {
+                    return;
+                }
+
+                let arg = &args[0];
+                use crate::types::Type;
+
+                match &arg.ty {
+                    Type::Double => {
+                        // Already double - just generate the expression
+                        self.gen_expr(func, ctx, arg);
+                    }
+                    Type::Int | Type::Logical => {
+                        // Scalar cast: int/logical -> double
+                        self.gen_expr(func, ctx, arg);
+                        func.instruction(&Instruction::F64ConvertI32S);
+                    }
+                    Type::Vector(elem_ty) => {
+                        // Vector cast - call runtime function
+                        let func_name = match elem_ty.as_ref() {
+                            Type::Double => {
+                                // Already vector<double> - just pass through
+                                self.gen_expr(func, ctx, arg);
+                                return;
+                            }
+                            Type::Int => "system_cast_vec_int_to_vec_double",
+                            Type::Logical => "system_cast_vec_logical_to_vec_double",
+                            _ => {
+                                // Unsupported - should not happen due to type checking
+                                self.gen_expr(func, ctx, arg);
+                                return;
+                            }
+                        };
+
+                        self.gen_expr(func, ctx, arg);
+                        let func_idx = *self.func_indices.get(func_name)
+                            .unwrap_or_else(|| panic!("Cast function {} not found in runtime", func_name));
+                        func.instruction(&Instruction::Call(func_idx));
+                    }
+                    _ => {
+                        // Unsupported type - should not happen due to type checking
+                        self.gen_expr(func, ctx, arg);
+                    }
+                }
+            }
+            BuiltinKind::AsLogical => {
+                // as.logical(x) casts x to logical (scalars emit instructions directly, vectors call runtime)
+                if args.is_empty() {
+                    return;
+                }
+
+                let arg = &args[0];
+                use crate::types::Type;
+
+                match &arg.ty {
+                    Type::Logical => {
+                        // Already logical - just generate the expression
+                        self.gen_expr(func, ctx, arg);
+                    }
+                    Type::Double => {
+                        // Scalar cast: double -> logical (boolean)
+                        self.gen_expr(func, ctx, arg);
+                        func.instruction(&Instruction::F64Const(wasm_encoder::Ieee64::from(0.0)));
+                        func.instruction(&Instruction::F64Ne);  // Compare not equal
+                    }
+                    Type::Int => {
+                        // Scalar cast: int -> logical (boolean)
+                        self.gen_expr(func, ctx, arg);
+                        func.instruction(&Instruction::I32Const(0));
+                        func.instruction(&Instruction::I32Ne);  // Compare not equal
+                    }
+                    Type::Vector(elem_ty) => {
+                        // Vector cast - call runtime function
+                        let func_name = match elem_ty.as_ref() {
+                            Type::Logical => {
+                                // Already vector<logical> - just pass through
+                                self.gen_expr(func, ctx, arg);
+                                return;
+                            }
+                            Type::Int => "system_cast_vec_int_to_vec_logical",
+                            Type::Double => "system_cast_vec_double_to_vec_logical",
+                            _ => {
+                                // Unsupported - should not happen due to type checking
+                                self.gen_expr(func, ctx, arg);
+                                return;
+                            }
+                        };
+
+                        self.gen_expr(func, ctx, arg);
+                        let func_idx = *self.func_indices.get(func_name)
+                            .unwrap_or_else(|| panic!("Cast function {} not found in runtime", func_name));
+                        func.instruction(&Instruction::Call(func_idx));
+                    }
+                    _ => {
+                        // Unsupported type - should not happen due to type checking
+                        self.gen_expr(func, ctx, arg);
+                    }
+                }
+            }
         }
     }
 }

@@ -253,6 +253,144 @@ impl<'a> LowerCtx<'a> {
                     ty: vector_type,
                 })
             }
+            BuiltinKind::AsInt => {
+                // as.integer(x) casts x to int (works for scalars and vectors)
+                if args.len() != 1 {
+                    return Err(TypeError::ArityMismatch {
+                        func: name.to_string(),
+                        expected: 1,
+                        found: args.len(),
+                    });
+                }
+
+                let arg = &args[0];
+                let result_type = match &arg.ty {
+                    Type::Int => Type::Int,  // Already int
+                    Type::Double | Type::Logical => Type::Int,  // Scalar cast
+                    Type::Vector(elem_ty) => {
+                        // Vector cast
+                        match elem_ty.as_ref() {
+                            Type::Int | Type::Double | Type::Logical => {
+                                Type::Vector(Box::new(Type::Int))
+                            }
+                            _ => {
+                                return Err(TypeError::TypeMismatch {
+                                    expected: Type::Vector(Box::new(Type::Int)),
+                                    found: arg.ty.clone(),
+                                    context: format!("as.integer() requires numeric scalar or vector"),
+                                });
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(TypeError::TypeMismatch {
+                            expected: Type::Int,
+                            found: arg.ty.clone(),
+                            context: format!("as.integer() requires numeric scalar or vector"),
+                        });
+                    }
+                };
+
+                Ok(IRExpr {
+                    kind: IRExprKind::BuiltinCall {
+                        builtin: kind,
+                        args,
+                    },
+                    ty: result_type,
+                })
+            }
+            BuiltinKind::AsDouble => {
+                // as.double(x) casts x to double (works for scalars and vectors)
+                if args.len() != 1 {
+                    return Err(TypeError::ArityMismatch {
+                        func: name.to_string(),
+                        expected: 1,
+                        found: args.len(),
+                    });
+                }
+
+                let arg = &args[0];
+                let result_type = match &arg.ty {
+                    Type::Double => Type::Double,  // Already double
+                    Type::Int | Type::Logical => Type::Double,  // Scalar cast
+                    Type::Vector(elem_ty) => {
+                        // Vector cast
+                        match elem_ty.as_ref() {
+                            Type::Int | Type::Double | Type::Logical => {
+                                Type::Vector(Box::new(Type::Double))
+                            }
+                            _ => {
+                                return Err(TypeError::TypeMismatch {
+                                    expected: Type::Vector(Box::new(Type::Double)),
+                                    found: arg.ty.clone(),
+                                    context: format!("as.double() requires numeric scalar or vector"),
+                                });
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(TypeError::TypeMismatch {
+                            expected: Type::Double,
+                            found: arg.ty.clone(),
+                            context: format!("as.double() requires numeric scalar or vector"),
+                        });
+                    }
+                };
+
+                Ok(IRExpr {
+                    kind: IRExprKind::BuiltinCall {
+                        builtin: kind,
+                        args,
+                    },
+                    ty: result_type,
+                })
+            }
+            BuiltinKind::AsLogical => {
+                // as.logical(x) casts x to logical (works for scalars and vectors)
+                if args.len() != 1 {
+                    return Err(TypeError::ArityMismatch {
+                        func: name.to_string(),
+                        expected: 1,
+                        found: args.len(),
+                    });
+                }
+
+                let arg = &args[0];
+                let result_type = match &arg.ty {
+                    Type::Logical => Type::Logical,  // Already logical
+                    Type::Int | Type::Double => Type::Logical,  // Scalar cast
+                    Type::Vector(elem_ty) => {
+                        // Vector cast
+                        match elem_ty.as_ref() {
+                            Type::Int | Type::Double | Type::Logical => {
+                                Type::Vector(Box::new(Type::Logical))
+                            }
+                            _ => {
+                                return Err(TypeError::TypeMismatch {
+                                    expected: Type::Vector(Box::new(Type::Logical)),
+                                    found: arg.ty.clone(),
+                                    context: format!("as.logical() requires numeric scalar or vector"),
+                                });
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(TypeError::TypeMismatch {
+                            expected: Type::Logical,
+                            found: arg.ty.clone(),
+                            context: format!("as.logical() requires numeric scalar or vector"),
+                        });
+                    }
+                };
+
+                Ok(IRExpr {
+                    kind: IRExprKind::BuiltinCall {
+                        builtin: kind,
+                        args,
+                    },
+                    ty: result_type,
+                })
+            }
         }
     }
 }

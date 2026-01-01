@@ -58,6 +58,9 @@ pub enum BuiltinKind {
     Length,
     Stop,
     Vector,
+    AsInt,
+    AsDouble,
+    AsLogical,
 }
 
 #[derive(Debug, Clone, PartialEq)]

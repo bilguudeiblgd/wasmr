@@ -1,0 +1,1082 @@
+\documentclass[12pt]{report}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{xcolor}
+
+% Configure listings for R-like code
+\lstdefinelanguage{RtyLang}{
+  keywords={function, if, else, for, in, while, return, int, double, string, char, void, logical, any, vector, list},
+  keywordstyle=\color{blue}\bfseries,
+  string=[b]",
+  comment=[l]{\#},
+  morecomment=[s]{/*}{*/},
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{red},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  showstringspaces=false,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  frame=single,
+  captionpos=b
+}
+
+\begin{document}
+
+\chapter{Language Design}
+
+\section{Typed R-like Language}
+
+This chapter presents the design of a statically-typed programming language inspired by R's syntax, which we refer to as the \textit{Typed R-like Language}. The language maintains R's characteristic features such as the left-assignment operator (\texttt{<-}), first-class functions, and vector-oriented programming, while introducing a static type system to enable ahead-of-time compilation to WebAssembly.
+
+The language supports:
+\begin{itemize}
+    \item \textbf{Static typing} with type inference and explicit type annotations
+    \item \textbf{First-class functions} with closures and lexical scoping
+    \item \textbf{Vector operations} as a fundamental data structure
+    \item \textbf{Control flow} constructs including conditionals and loops
+    \item \textbf{Higher-order functions} enabling functional programming patterns
+    \item \textbf{Lexical scoping} with support for nested functions and variable capture
+\end{itemize}
+
+The design philosophy emphasizes a familiar R-like syntax while ensuring type safety and efficient compilation to WebAssembly. Unlike dynamically-typed R, all type information is resolved at compile time, enabling optimized code generation and early error detection.
+
+\section{Syntax}
+
+The syntax of the Typed R-like Language closely follows R conventions with extensions for explicit type annotations. This section describes the core syntactic constructs.
+
+\subsection{Lexical Elements}
+
+The language uses the following lexical tokens:
+
+\begin{itemize}
+    \item \textbf{Keywords:} \texttt{function}, \texttt{if}, \texttt{else}, \texttt{for}, \texttt{in}, \texttt{while}, \texttt{return}
+    \item \textbf{Type keywords:} \texttt{int}, \texttt{double}, \texttt{string}, \texttt{char}, \texttt{void}, \texttt{logical}, \texttt{any}, \texttt{vector}, \texttt{list}
+    \item \textbf{Operators:}
+    \begin{itemize}
+        \item Assignment: \texttt{<-} (assignment), \texttt{<<-} (super-assignment)
+        \item Arithmetic: \texttt{+}, \texttt{-}, \texttt{*}, \texttt{/}, \texttt{\%\%} (modulo)
+        \item Comparison: \texttt{==}, \texttt{!=}, \texttt{<}, \texttt{<=}, \texttt{>}, \texttt{>=}
+        \item Logical: \texttt{\&} (and), \texttt{|} (or), \texttt{!} (not)
+        \item Range: \texttt{:} (sequence generation)
+        \item Type annotation: \texttt{:} (in declaration context)
+        \item Function arrow: \texttt{->} (in type signatures)
+    \end{itemize}
+    \item \textbf{Delimiters:} \texttt{(}, \texttt{)}, \texttt{\{}, \texttt{\}}, \texttt{[}, \texttt{]}, \texttt{,}
+    \item \textbf{Literals:} Numeric literals, string literals (double-quoted), logical literals (\texttt{TRUE}, \texttt{FALSE})
+    \item \textbf{Identifiers:} Alphanumeric sequences starting with a letter or underscore
+    \item \textbf{Special:} \texttt{...} (varargs placeholder)
+\end{itemize}
+
+\subsection{Variable Declaration and Assignment}
+
+Variables are declared using the left-assignment operator with optional type annotations:
+
+\begin{lstlisting}[language=RtyLang, caption={Variable assignment examples}]
+# Simple assignment with type inference
+x <- 10
+
+# Assignment with explicit type annotation
+y: int <- 20
+
+# String assignment
+name: string <- "Hello"
+
+# Vector assignment
+vec <- c(1, 2, 3)
+\end{lstlisting}
+
+The super-assignment operator \texttt{<<-} modifies variables in enclosing function scopes:
+
+\begin{lstlisting}[language=RtyLang, caption={Super-assignment example}]
+outer <- function() {
+    x <- 0
+    inner <- function() {
+        x <<- 10  # Modifies x in outer scope
+    }
+    inner()
+    return(x)  # Returns 10
+}
+\end{lstlisting}
+
+\subsection{Function Definitions}
+
+Functions are first-class values defined using the \texttt{function} keyword:
+
+\begin{lstlisting}[language=RtyLang, caption={Function definition examples}]
+# Simple function with type annotations
+add <- function(a: int, b: int): int {
+    return(a + b)
+}
+
+# Function returning a vector
+create_vector <- function(): vector<double> {
+    return(c(1.0, 2.0, 3.0))
+}
+
+# Higher-order function
+apply_twice <- function(f: int -> int, x: int): int {
+    return(f(f(x)))
+}
+
+# Function with default parameters
+greet <- function(name: string, prefix: string = "Hello"): string {
+    return(prefix)  # Simplified example
+}
+\end{lstlisting}
+
+Function types use arrow notation: \texttt{param\_types -> return\_type}. Multiple parameters are comma-separated, and parentheses group complex function types when used as parameters.
+
+\subsection{Control Flow}
+
+\subsubsection{Conditional Statements}
+
+The language supports \texttt{if-else} statements and expressions:
+
+\begin{lstlisting}[language=RtyLang, caption={Conditional examples}]
+# If statement
+if (x > 0) {
+    print(x)
+}
+
+# If-else statement
+if (x > 0) {
+    y <- 1
+} else {
+    y <- -1
+}
+
+# If expression (returns value)
+result <- if (x > 0) { 1 } else { -1 }
+\end{lstlisting}
+
+\subsubsection{Loops}
+
+Two loop constructs are provided: \texttt{for} and \texttt{while}.
+
+\begin{lstlisting}[language=RtyLang, caption={Loop examples}]
+# For loop iterating over range
+for (i in 1:10) {
+    print(i)
+}
+
+# For loop iterating over vector
+vec <- c(1, 2, 3, 4, 5)
+for (x in vec) {
+    print(x)
+}
+
+# While loop
+i <- 1
+sum <- 0
+while (i <= 5) {
+    sum <- sum + i
+    i <- i + 1
+}
+\end{lstlisting}
+
+\subsection{Expressions}
+
+The language supports various expression forms:
+
+\begin{itemize}
+    \item \textbf{Literals:} \texttt{42}, \texttt{3.14}, \texttt{"text"}, \texttt{TRUE}, \texttt{FALSE}
+    \item \textbf{Identifiers:} Variable references
+    \item \textbf{Binary operations:} Arithmetic, comparison, logical, range (\texttt{1:10})
+    \item \textbf{Unary operations:} Negation (\texttt{-x}), logical not (\texttt{!x})
+    \item \textbf{Function calls:} \texttt{f(arg1, arg2)} with positional or named arguments
+    \item \textbf{Vector indexing:} \texttt{vec[i]}
+    \item \textbf{Vector construction:} \texttt{c(1, 2, 3)}
+    \item \textbf{Function definitions:} Anonymous functions as expressions
+    \item \textbf{If expressions:} Conditional expressions returning values
+\end{itemize}
+
+\subsection{Blocks and Tail Expressions}
+
+Blocks consist of zero or more statements followed by an optional tail expression. The tail expression (final expression without semicolon) determines the block's value:
+
+\begin{lstlisting}[language=RtyLang, caption={Block with tail expression}]
+f <- function(x: int): int {
+    y <- x * 2
+    z <- y + 1
+    z  # Tail expression - returned automatically
+}
+\end{lstlisting}
+
+\section{Type System}
+
+The type system ensures type safety through static analysis while supporting type inference to maintain concise syntax.
+
+\subsection{Primitive Types}
+
+The language provides the following primitive types:
+
+\begin{itemize}
+    \item \texttt{int}: 32-bit signed integers (maps to WebAssembly \texttt{i32})
+    \item \texttt{double}: 64-bit floating-point numbers (maps to WebAssembly \texttt{f64})
+    \item \texttt{string}: UTF-8 encoded text
+    \item \texttt{char}: Single character
+    \item \texttt{logical}: Boolean values (\texttt{TRUE} or \texttt{FALSE})
+    \item \texttt{void}: Absence of value (used for functions with no return)
+    \item \texttt{any}: Top type representing any value (used for dynamic constructs)
+\end{itemize}
+
+\subsection{Composite Types}
+
+\subsubsection{Vector Types}
+
+Vectors are homogeneous arrays parameterized by element type:
+
+\begin{lstlisting}[language=RtyLang, caption={Vector type examples}]
+# Vector of integers
+v1: vector<int> <- c(1, 2, 3)
+
+# Vector of doubles
+v2: vector<double> <- c(1.5, 2.5, 3.5)
+
+# Vector operations (component-wise)
+v3: vector<double> <- v2 + c(1.0, 2.0, 3.0)
+\end{lstlisting}
+
+Vectors support component-wise arithmetic operations when both operands have compatible vector types.
+
+\subsubsection{Function Types}
+
+Function types represent callable values with parameter and return types:
+
+\begin{verbatim}
+<type> ::= <function_type>
+
+<function_type> ::= <param_list> "->" <type>
+                  | <primary_type>
+
+<param_list> ::= <primary_type>
+               | <primary_type> "," <param_list>
+
+<primary_type> ::= <builtin_type>
+                 | <generic_type>
+                 | "(" <function_type> ")"
+                 | "function"
+
+<builtin_type> ::= "int" | "double" | "string" | "char"
+                 | "void" | "logical" | "any"
+
+<generic_type> ::= "vector" "<" <type> ">"
+                 | "list" "<" <type> ">"
+\end{verbatim}
+
+Examples of function types:
+\begin{itemize}
+    \item \texttt{int -> int}: Function taking an integer, returning an integer
+    \item \texttt{int, int -> double}: Function taking two integers, returning a double
+    \item \texttt{(int -> int) -> int}: Higher-order function taking a function as parameter
+    \item \texttt{int, (int, int -> int) -> int}: Function taking an integer and a function
+\end{itemize}
+
+\subsection{Type Inference}
+
+The type checker performs bidirectional type inference:
+
+\begin{itemize}
+    \item \textbf{Bottom-up inference:} Expression types are inferred from literal values and operator signatures
+    \item \textbf{Top-down checking:} Function return types and variable annotations provide expected types
+    \item \textbf{Unification:} Type constraints are solved to determine concrete types
+\end{itemize}
+
+Type annotations are required in the following contexts:
+\begin{itemize}
+    \item Function parameters
+    \item Function return types (when not inferrable from return statements)
+    \item Ambiguous variable declarations
+\end{itemize}
+
+\subsection{Typing Rules}
+
+Selected typing rules are presented below using inference rule notation.
+
+\subsubsection{Variable Reference}
+
+\[
+\frac{\Gamma(x) = T}{\Gamma \vdash x : T}
+\]
+
+A variable reference has the type bound in the environment $\Gamma$.
+
+\subsubsection{Function Application}
+
+\[
+\frac{\Gamma \vdash e_1 : T_1, \ldots, T_n \to T \quad \Gamma \vdash e_2 : T_1 \quad \cdots \quad \Gamma \vdash e_{n+1} : T_n}{\Gamma \vdash e_1(e_2, \ldots, e_{n+1}) : T}
+\]
+
+Function application checks that argument types match parameter types and produces the return type.
+
+\subsubsection{Function Definition}
+
+\[
+\frac{\Gamma, x_1:T_1, \ldots, x_n:T_n \vdash e : T_{ret}}{\Gamma \vdash \texttt{function}(x_1:T_1, \ldots, x_n:T_n): T_{ret} \{ e \} : (T_1, \ldots, T_n \to T_{ret})}
+\]
+
+A function definition has a function type where parameters and return type match the declared signature.
+
+\subsubsection{Binary Operations}
+
+\[
+\frac{\Gamma \vdash e_1 : \texttt{int} \quad \Gamma \vdash e_2 : \texttt{int}}{\Gamma \vdash e_1 + e_2 : \texttt{int}}
+\]
+
+\[
+\frac{\Gamma \vdash e_1 : \texttt{double} \quad \Gamma \vdash e_2 : \texttt{double}}{\Gamma \vdash e_1 + e_2 : \texttt{double}}
+\]
+
+Arithmetic operators are overloaded for numeric types. Comparison operators produce \texttt{logical} values.
+
+\subsubsection{Vector Operations}
+
+\[
+\frac{\Gamma \vdash e_1 : \texttt{vector}<T> \quad \Gamma \vdash e_2 : \texttt{vector}<T>}{\Gamma \vdash e_1 + e_2 : \texttt{vector}<T>}
+\]
+
+Component-wise vector operations require matching element types.
+
+\subsubsection{Conditionals}
+
+\[
+\frac{\Gamma \vdash e_{cond} : \texttt{logical} \quad \Gamma \vdash e_{then} : T \quad \Gamma \vdash e_{else} : T}{\Gamma \vdash \texttt{if}\ (e_{cond})\ \{ e_{then} \}\ \texttt{else}\ \{ e_{else} \} : T}
+\]
+
+If-expressions require a logical condition and both branches must have the same type.
+
+\subsection{Scoping and Closures}
+
+The language uses lexical scoping where:
+\begin{itemize}
+    \item Only functions create new scopes (blocks, if-statements, and loops do not)
+    \item Functions can capture variables from enclosing function scopes
+    \item Captured variables are implemented using closure environments in WebAssembly
+    \item Super-assignment (\texttt{<<-}) searches enclosing function scopes to modify variables
+\end{itemize}
+
+Example demonstrating closure:
+\begin{lstlisting}[language=RtyLang, caption={Closure example}]
+make_counter <- function(start: int): () -> int {
+    count <- start
+    function(): int {
+        count <<- count + 1
+        return(count)
+    }
+}
+
+counter <- make_counter(0)
+print(counter())  # Prints 1
+print(counter())  # Prints 2
+\end{lstlisting}
+
+\section{Semantics}
+
+This section describes the operational semantics of key language constructs.
+
+\subsection{Expression Evaluation}
+
+Expression evaluation follows a small-step operational semantics with evaluation contexts.
+
+\subsubsection{Literal Evaluation}
+
+Literals evaluate to themselves:
+\begin{align*}
+n &\Downarrow n \quad \text{(numeric literal)} \\
+\texttt{"str"} &\Downarrow \texttt{"str"} \quad \text{(string literal)} \\
+\texttt{TRUE} &\Downarrow \texttt{TRUE} \quad \text{(logical literal)}
+\end{align*}
+
+\subsubsection{Variable Lookup}
+
+Variable references evaluate by environment lookup:
+\[
+\frac{\rho(x) = v}{\langle x, \rho \rangle \Downarrow v}
+\]
+where $\rho$ is the runtime environment mapping identifiers to values.
+
+\subsubsection{Binary Operations}
+
+Binary operations evaluate operands left-to-right, then apply the operation:
+\[
+\frac{\langle e_1, \rho \rangle \Downarrow v_1 \quad \langle e_2, \rho \rangle \Downarrow v_2 \quad v_1 \oplus v_2 = v}{\langle e_1 \oplus e_2, \rho \rangle \Downarrow v}
+\]
+where $\oplus$ represents any binary operator.
+
+\textbf{Arithmetic Operators} (\texttt{+}, \texttt{-}, \texttt{*}, \texttt{/}, \texttt{\%\%}) on same types:
+\begin{align*}
+n_1 + n_2 &= n_1 + n_2 \quad \text{(int + int $\to$ int)} \\
+d_1 + d_2 &= d_1 + d_2 \quad \text{(double + double $\to$ double)} \\
+n_1 - n_2 &= n_1 - n_2 \\
+n_1 * n_2 &= n_1 \times n_2 \\
+n_1 / n_2 &= \lfloor n_1 \div n_2 \rfloor \quad \text{(integer division)} \\
+d_1 / d_2 &= d_1 \div d_2 \quad \text{(floating-point division)} \\
+n_1 \bmod n_2 &= n_1 \bmod n_2
+\end{align*}
+
+\textbf{Type Promotion}: When operands have different numeric types, implicit casting promotes to the wider type:
+\begin{align*}
+\text{int} \oplus \text{double} &\to \text{double} \\
+\text{logical} \oplus \text{int} &\to \text{int} \\
+\text{logical} \oplus \text{double} &\to \text{double}
+\end{align*}
+
+Example: \texttt{3 + 2.5} evaluates as \texttt{3.0 + 2.5 = 5.5} after promoting \texttt{3} to \texttt{double}.
+
+\textbf{Comparison Operators} (\texttt{==}, \texttt{!=}, \texttt{<}, \texttt{<=}, \texttt{>}, \texttt{>=}) produce logical values:
+\begin{align*}
+n_1 < n_2 &= \texttt{TRUE} \text{ if } n_1 < n_2, \text{ else } \texttt{FALSE} \\
+n_1 == n_2 &= \texttt{TRUE} \text{ if } n_1 = n_2, \text{ else } \texttt{FALSE}
+\end{align*}
+Type promotion applies: \texttt{3 < 2.5} compares as \texttt{3.0 < 2.5}.
+
+\textbf{Logical Operators} (\texttt{\&}, \texttt{|}) on boolean values:
+\begin{align*}
+b_1 \texttt{ \& } b_2 &= b_1 \land b_2 \\
+b_1 \texttt{ | } b_2 &= b_1 \lor b_2
+\end{align*}
+
+\textbf{Vector Operations} are applied component-wise after ensuring compatible types:
+\[
+\texttt{vector}[v_1, \ldots, v_n] \oplus \texttt{vector}[w_1, \ldots, w_n] = \texttt{vector}[v_1 \oplus w_1, \ldots, v_n \oplus w_n]
+\]
+
+For mixed vector types, element types are promoted (e.g., \texttt{vector<int>} + \texttt{vector<double>} produces \texttt{vector<double>}).
+
+\textbf{Vector-Scalar Operations}: Scalars are broadcast to match vector length:
+\[
+\texttt{vector}[v_1, \ldots, v_n] \oplus s = \texttt{vector}[v_1 \oplus s, \ldots, v_n \oplus s]
+\]
+
+\subsubsection{Function Application}
+
+Function application evaluates the callee to obtain a closure, evaluates arguments, extends the closure environment, and evaluates the body:
+\[
+\frac{
+\begin{aligned}
+&\langle e_0, \rho \rangle \Downarrow \langle \lambda(x_1, \ldots, x_n).e, \rho' \rangle \\
+&\langle e_1, \rho \rangle \Downarrow v_1 \quad \cdots \quad \langle e_n, \rho \rangle \Downarrow v_n \\
+&\langle e, \rho'[x_1 \mapsto v_1, \ldots, x_n \mapsto v_n] \rangle \Downarrow v
+\end{aligned}
+}{
+\langle e_0(e_1, \ldots, e_n), \rho \rangle \Downarrow v
+}
+\]
+
+\subsection{Statement Execution}
+
+Statements modify the environment and may alter control flow.
+
+\subsubsection{Assignment}
+
+Assignment evaluates the right-hand side and binds the result to the identifier:
+\[
+\frac{\langle e, \rho \rangle \Downarrow v}{\langle x \texttt{ <- } e, \rho \rangle \rightarrow \rho[x \mapsto v]}
+\]
+
+Super-assignment searches parent scopes:
+\[
+\frac{\langle e, \rho \rangle \Downarrow v \quad x \in \text{dom}(\rho_{parent})}{\langle x \texttt{ <<- } e, \rho \rangle \rightarrow \rho[\rho_{parent}[x \mapsto v]]}
+\]
+
+\subsubsection{Conditional Execution}
+
+If-statements evaluate the condition and execute the appropriate branch:
+\[
+\frac{\langle e_{cond}, \rho \rangle \Downarrow \texttt{TRUE} \quad \langle s_{then}, \rho \rangle \rightarrow \rho'}{\langle \texttt{if}\ (e_{cond})\ \{ s_{then} \}, \rho \rangle \rightarrow \rho'}
+\]
+
+\[
+\frac{\langle e_{cond}, \rho \rangle \Downarrow \texttt{FALSE} \quad \langle s_{else}, \rho \rangle \rightarrow \rho'}{\langle \texttt{if}\ (e_{cond})\ \{ s_{then} \}\ \texttt{else}\ \{ s_{else} \}, \rho \rangle \rightarrow \rho'}
+\]
+
+\subsubsection{While Loops}
+
+While loops repeatedly execute the body while the condition is true:
+\[
+\frac{\langle e_{cond}, \rho \rangle \Downarrow \texttt{FALSE}}{\langle \texttt{while}\ (e_{cond})\ \{ s \}, \rho \rangle \rightarrow \rho}
+\]
+
+\[
+\frac{
+\begin{aligned}
+&\langle e_{cond}, \rho \rangle \Downarrow \texttt{TRUE} \\
+&\langle s, \rho \rangle \rightarrow \rho' \\
+&\langle \texttt{while}\ (e_{cond})\ \{ s \}, \rho' \rangle \rightarrow \rho''
+\end{aligned}
+}{
+\langle \texttt{while}\ (e_{cond})\ \{ s \}, \rho \rangle \rightarrow \rho''
+}
+\]
+
+\subsubsection{For Loops}
+
+For loops iterate over vectors or ranges:
+\[
+\frac{
+\begin{aligned}
+&\langle e_{vec}, \rho \rangle \Downarrow \texttt{vector}[v_1, \ldots, v_n] \\
+&\langle s, \rho[x \mapsto v_1] \rangle \rightarrow \rho_1 \\
+&\cdots \\
+&\langle s, \rho_{n-1}[x \mapsto v_n] \rangle \rightarrow \rho_n
+\end{aligned}
+}{
+\langle \texttt{for}\ (x\ \texttt{in}\ e_{vec})\ \{ s \}, \rho \rangle \rightarrow \rho_n
+}
+\]
+
+\subsection{Function Calls and Return}
+
+Function calls push a new activation frame onto the call stack. The \texttt{return} statement terminates function execution and yields a value:
+\[
+\frac{\langle e, \rho \rangle \Downarrow v}{\langle \texttt{return}(e), \rho \rangle \Rightarrow v}
+\]
+
+The special $\Rightarrow$ arrow indicates early exit from the function body.
+
+\subsection{Built-in Functions}
+
+The language provides built-in functions with special semantics:
+
+\begin{itemize}
+    \item \texttt{c(e1, ..., en)}: Creates a vector from arguments. All arguments must have the same type.
+    \item \texttt{print(e)}: Outputs the value of expression \texttt{e} to standard output.
+    \item \texttt{length(v)}: Returns the number of elements in vector \texttt{v}.
+    \item \texttt{sum(v)}: Returns the sum of all elements in numeric vector \texttt{v}.
+    \item \texttt{gen\_seq(start, end)}: Generates a sequence from \texttt{start} to \texttt{end} (equivalent to \texttt{start:end}).
+\end{itemize}
+
+\chapter{Compiler and Runtime}
+
+\section{Compiler Architecture}
+
+The compiler follows a multi-stage pipeline architecture transforming source code into WebAssembly bytecode. The compilation pipeline consists of four main phases:
+
+\begin{enumerate}
+    \item \textbf{Lexical Analysis (Lexer)}: Tokenizes source text into a stream of tokens
+    \item \textbf{Syntactic Analysis (Parser)}: Constructs an abstract syntax tree (AST) from tokens
+    \item \textbf{Semantic Analysis (Type Resolution)}: Performs type checking and generates typed intermediate representation (IR)
+    \item \textbf{Code Generation (Backend)}: Emits WebAssembly bytecode from typed IR
+\end{enumerate}
+
+\subsection{Lexer}
+
+The lexer (\texttt{src/lexer.rs}) performs lexical analysis by scanning the input character stream and producing tokens. Key features:
+
+\begin{itemize}
+    \item Recognizes keywords, identifiers, literals, and operators
+    \item Handles multi-character operators: \texttt{<-}, \texttt{<<-}, \texttt{->}, \texttt{==}, \texttt{!=}, \texttt{<=}, \texttt{>=}, \texttt{\%\%}
+    \item Distinguishes between operator and type annotation contexts (e.g., \texttt{:} in \texttt{x:int} vs. \texttt{1:10})
+    \item Preserves newlines as distinct tokens for parser context
+    \item Identifies built-in type names (\texttt{int}, \texttt{double}, etc.) as special tokens
+\end{itemize}
+
+\subsection{Parser}
+
+The parser (\texttt{src/parser.rs}) implements a recursive descent parser that constructs an untyped AST. Design characteristics:
+
+\begin{itemize}
+    \item Operator precedence climbing for binary expressions
+    \item Pratt parsing for handling operator associativity
+    \item Block structure with optional tail expressions
+    \item Function definitions as expressions (not just statements)
+    \item Named and positional function arguments
+    \item Type annotations parsed but not validated at this stage
+\end{itemize}
+
+The AST representation (\texttt{src/ast.rs}) includes:
+\begin{itemize}
+    \item \texttt{Stmt}: Statement variants (assignment, if, for, while, return, blocks)
+    \item \texttt{Expr}: Expression variants (literals, binary ops, function defs, calls)
+    \item \texttt{Block}: Statement sequences with optional tail expression
+    \item \texttt{ParamDef}: Function parameters with optional default values
+\end{itemize}
+
+\subsection{Type Resolution and IR Generation}
+
+The type resolver (\texttt{src/ir.rs}) performs type checking and generates a typed intermediate representation. This phase:
+
+\begin{itemize}
+    \item Constructs type environments mapping identifiers to types
+    \item Performs bidirectional type inference
+    \item Validates function signatures and call sites
+    \item Resolves operator overloading based on operand types
+    \item Detects type errors (mismatched types, undefined variables, arity errors)
+    \item Generates typed IR nodes where every expression has a concrete type
+\end{itemize}
+
+The type resolution algorithm:
+\begin{enumerate}
+    \item Collect top-level function definitions to populate the global environment
+    \item Process statements in order, maintaining a scope stack
+    \item For expressions, infer types bottom-up while checking against expected types
+    \item Validate assignments, ensuring RHS type matches LHS annotation (if present)
+    \item Track captured variables for closure implementation
+\end{enumerate}
+
+The IR representation includes:
+\begin{itemize}
+    \item \texttt{IRStmt}: Typed statements parallel to AST statements
+    \item \texttt{IRExpr}: Typed expressions containing both \texttt{kind: IRExprKind} and \texttt{ty: Type}
+    \item \texttt{FunctionMetadata}: Local variable information, captured variables, and parameter mappings
+    \item \texttt{IRProgram}: Complete typed program with main function and helper functions
+\end{itemize}
+
+\subsection{IR Passes}
+
+Before code generation, the IR undergoes analysis passes coordinated by \texttt{IRPassManager}:
+
+\begin{itemize}
+    \item \textbf{Variable Collection Pass}: Analyzes functions to:
+    \begin{itemize}
+        \item Collect all local variables (parameters, user-declared, compiler-generated)
+        \item Assign WebAssembly local indices
+        \item Track loop iterators and temporary variables
+        \item Build \texttt{FunctionMetadata} for code generation
+    \end{itemize}
+    \item \textbf{Closure Analysis Pass}: Identifies captured variables and determines which functions need closure environments
+\end{itemize}
+
+\subsection{Backend}
+
+The backend (\texttt{src/backend/}) generates WebAssembly bytecode from typed IR. The \texttt{WasmGenerator} manages:
+
+\begin{itemize}
+    \item Type section: WebAssembly type definitions (function signatures, array types, struct types)
+    \item Import section: WASI imports for I/O operations
+    \item Function section: Function type indices
+    \item Memory section: Linear memory configuration
+    \item Export section: Exported functions (including \texttt{\_start})
+    \item Data section: Static data initialization
+    \item Code section: Function bodies with WebAssembly instructions
+\end{itemize}
+
+Code emission is organized into specialized modules:
+\begin{itemize}
+    \item \texttt{emit/expressions.rs}: Expression compilation
+    \item \texttt{emit/statements.rs}: Statement compilation
+    \item \texttt{emit/builtins.rs}: Built-in function implementations
+    \item \texttt{emit/binary\_ops.rs}: Binary operator code generation
+    \item \texttt{emit/functions.rs}: Function definition and call handling
+    \item \texttt{emit/ref\_cells.rs}: Reference cell operations for mutable captures
+\end{itemize}
+
+\section{WebAssembly Code Generation}
+
+This section describes the translation of language constructs to WebAssembly instructions.
+
+\subsection{Type Mapping}
+
+Types are mapped to WebAssembly value types as follows:
+
+\begin{center}
+\begin{tabular}{ll}
+\hline
+\textbf{Source Type} & \textbf{WebAssembly Type} \\
+\hline
+\texttt{int} & \texttt{i32} \\
+\texttt{double} & \texttt{f64} \\
+\texttt{char} & \texttt{i32} (Unicode code point) \\
+\texttt{logical} & \texttt{i32} (0 = false, 1 = true) \\
+\texttt{string} & \texttt{(ref array i32)} (array of code points) \\
+\texttt{vector<T>} & \texttt{(ref \$vec\_T)} (struct with data array and length) \\
+\texttt{function} & \texttt{(ref \$functype)} (typed function reference) \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsubsection{Vector Representation}
+
+Vectors are represented as WebAssembly GC structs:
+\begin{lstlisting}[language=wasm, caption={Vector struct type}]
+(type $vec_f64 (struct
+  (field $data (ref (array (mut f64))))
+  (field $length (mut i32))
+))
+\end{lstlisting}
+
+This representation:
+\begin{itemize}
+    \item Uses WebAssembly GC arrays for efficient storage
+    \item Stores length separately for fast access
+    \item Allows mutable arrays for in-place updates
+    \item Type-specialized structs for different element types (i32, f64, anyref)
+\end{itemize}
+
+\subsubsection{Function References}
+
+Functions are represented using WebAssembly typed function references:
+\begin{itemize}
+    \item Simple functions: Direct \texttt{(ref \$functype)} where \texttt{\$functype} is the function signature
+    \item Closures: Struct containing function reference and captured environment
+    \item Function calls use \texttt{call\_ref} for indirect calls through function references
+\end{itemize}
+
+Closure representation:
+\begin{lstlisting}[language=wasm, caption={Closure struct type}]
+(type $closure (struct
+  (field $func (ref $functype))
+  (field $env (ref $env_struct))
+))
+\end{lstlisting}
+
+\subsection{Expression Compilation}
+
+\subsubsection{Literals}
+
+Literals compile to immediate value instructions:
+\begin{itemize}
+    \item Integer literals: \texttt{i32.const n}
+    \item Floating-point literals: \texttt{f64.const x}
+    \item Boolean literals: \texttt{i32.const 0} (false) or \texttt{i32.const 1} (true)
+\end{itemize}
+
+\subsubsection{Variables}
+
+Variable references compile to local or global access:
+\begin{itemize}
+    \item Local variables: \texttt{local.get \$var\_idx}
+    \item Captured variables: Load from closure environment struct
+    \item Function references: \texttt{ref.func \$func\_idx}
+\end{itemize}
+
+\subsubsection{Binary Operations}
+
+Binary operations compile to corresponding WebAssembly instructions:
+
+\begin{itemize}
+    \item Integer arithmetic: \texttt{i32.add}, \texttt{i32.sub}, \texttt{i32.mul}, \texttt{i32.div\_s}, \texttt{i32.rem\_s}
+    \item Float arithmetic: \texttt{f64.add}, \texttt{f64.sub}, \texttt{f64.mul}, \texttt{f64.div}
+    \item Integer comparison: \texttt{i32.eq}, \texttt{i32.ne}, \texttt{i32.lt\_s}, \texttt{i32.le\_s}, \texttt{i32.gt\_s}, \texttt{i32.ge\_s}
+    \item Float comparison: \texttt{f64.eq}, \texttt{f64.ne}, \texttt{f64.lt}, \texttt{f64.le}, \texttt{f64.gt}, \texttt{f64.ge}
+    \item Logical operations: \texttt{i32.and}, \texttt{i32.or} (with boolean normalization)
+\end{itemize}
+
+Vector operations compile to loops that apply scalar operations element-wise:
+\begin{enumerate}
+    \item Allocate result vector with same length as operands
+    \item Loop over indices 0 to length-1
+    \item Extract elements from both operand vectors
+    \item Apply scalar operation
+    \item Store result in result vector
+\end{enumerate}
+
+\subsubsection{Function Calls}
+
+Function calls compile differently based on callee type:
+
+\begin{itemize}
+    \item \textbf{Direct calls} (known function): \texttt{call \$func\_idx}
+    \item \textbf{Indirect calls} (function variable):
+    \begin{enumerate}
+        \item Load function reference from local/environment
+        \item Evaluate arguments
+        \item \texttt{call\_ref \$functype\_idx}
+    \end{enumerate}
+    \item \textbf{Closure calls}:
+    \begin{enumerate}
+        \item Load closure struct
+        \item Extract environment field
+        \item Extract function field
+        \item Pass environment as first parameter
+        \item Pass regular arguments
+        \item \texttt{call\_ref \$closure\_functype\_idx}
+    \end{enumerate}
+\end{itemize}
+
+\subsection{Statement Compilation}
+
+\subsubsection{Assignment}
+
+Regular assignment (\texttt{<-}):
+\begin{enumerate}
+    \item Evaluate right-hand side expression
+    \item Store result in local variable: \texttt{local.set \$var\_idx}
+\end{enumerate}
+
+Super-assignment (\texttt{<<-}) for captured variables:
+\begin{enumerate}
+    \item Evaluate right-hand side expression
+    \item Load closure environment
+    \item Navigate to appropriate nesting level
+    \item Extract reference cell for variable
+    \item Update cell contents using \texttt{struct.set}
+\end{enumerate}
+
+\subsubsection{Control Flow}
+
+\textbf{If statements} compile to WebAssembly block structures:
+\begin{lstlisting}[language=wasm, caption={If-else compilation}]
+; Evaluate condition
+(condition code)
+
+; If-else structure
+(if (result ...)
+  (then
+    ; then-branch code
+  )
+  (else
+    ; else-branch code
+  )
+)
+\end{lstlisting}
+
+\textbf{While loops} compile to loop blocks with conditional branching:
+\begin{lstlisting}[language=wasm, caption={While loop compilation}]
+(block $loop_exit
+  (loop $loop_start
+    ; Evaluate condition
+    (condition code)
+
+    ; Exit if false
+    (i32.eqz)
+    (br_if $loop_exit)
+
+    ; Loop body
+    (body code)
+
+    ; Continue loop
+    (br $loop_start)
+  )
+)
+\end{lstlisting}
+
+\textbf{For loops} over ranges compile to indexed loops:
+\begin{lstlisting}[language=wasm, caption={For loop compilation}]
+; Initialize loop variable to start
+(local.set $iter (start value))
+
+(block $loop_exit
+  (loop $loop_start
+    ; Check condition: iter <= end
+    (local.get $iter)
+    (end value)
+    (i32.gt_s)
+    (br_if $loop_exit)
+
+    ; Loop body with iter
+    (body code)
+
+    ; Increment iter
+    (local.get $iter)
+    (i32.const 1)
+    (i32.add)
+    (local.set $iter)
+
+    (br $loop_start)
+  )
+)
+\end{lstlisting}
+
+For loops over vectors use similar structure but load vector elements by index.
+
+\subsection{Function Compilation}
+
+Function compilation involves multiple steps:
+
+\begin{enumerate}
+    \item \textbf{Type registration}: Register function type in type section
+    \item \textbf{Function index allocation}: Assign unique function index
+    \item \textbf{Local variable allocation}: Determine local variable slots from \texttt{FunctionMetadata}
+    \item \textbf{Closure analysis}: Identify captured variables
+    \item \textbf{Environment struct generation}: Create struct type for captured variables (if needed)
+    \item \textbf{Code generation}: Emit function body
+\end{enumerate}
+
+Simple function (no captures):
+\begin{lstlisting}[language=wasm, caption={Simple function}]
+(func $add (param $a i32) (param $b i32) (result i32)
+  (local.get $a)
+  (local.get $b)
+  (i32.add)
+)
+\end{lstlisting}
+
+Closure function (with captures):
+\begin{lstlisting}[language=wasm, caption={Closure function}]
+(type $env (struct (field $captured_var (mut i32))))
+
+(func $closure_fn (param $env (ref $env)) (param $x i32) (result i32)
+  ; Access captured variable
+  (local.get $env)
+  (struct.get $env $captured_var)
+
+  ; Use parameter
+  (local.get $x)
+
+  ; Computation
+  (i32.add)
+)
+\end{lstlisting}
+
+When returning a closure, the compiler:
+\begin{enumerate}
+    \item Allocates environment struct
+    \item Copies captured variable values into struct fields
+    \item Allocates closure struct
+    \item Stores function reference and environment
+    \item Returns closure struct reference
+\end{enumerate}
+
+\section{Runtime System}
+
+\subsection{Memory Management}
+
+The runtime uses WebAssembly GC for automatic memory management:
+\begin{itemize}
+    \item Vectors, strings, and closures are GC-managed heap objects
+    \item No explicit deallocation required
+    \item WebAssembly GC handles reference counting and garbage collection
+    \item Linear memory used for WASI I/O buffers and string serialization
+\end{itemize}
+
+Memory layout:
+\begin{itemize}
+    \item Address 0: Reserved for null pointer checks
+    \item Address 8+: WASI I/O buffers for \texttt{fd\_write}
+    \item Dynamic region: Managed by compiler for temporary string buffers
+\end{itemize}
+
+\subsection{Vector Operations}
+
+Built-in vector operations are compiled to runtime function calls:
+
+\textbf{Vector Construction} (\texttt{c(...)}):
+\begin{enumerate}
+    \item Determine element type from arguments
+    \item Allocate array of appropriate size
+    \item Initialize array elements
+    \item Allocate vector struct
+    \item Store array reference and length
+    \item Return vector struct reference
+\end{enumerate}
+
+\textbf{Component-wise Operations}:
+Vector arithmetic is implemented as inline loops (described previously) rather than runtime calls for performance.
+
+\textbf{Reduction Operations} (\texttt{sum}, \texttt{length}):
+\begin{itemize}
+    \item \texttt{length}: Extract and return length field from vector struct
+    \item \texttt{sum}: Loop over vector elements, accumulating sum
+\end{itemize}
+
+\subsection{Built-in Function Implementations}
+
+\subsubsection{Print Function}
+
+The \texttt{print} function serializes values to strings and outputs via WASI:
+\begin{enumerate}
+    \item Convert value to string representation
+    \item Write string to linear memory buffer
+    \item Call \texttt{fd\_write} to output to stdout (file descriptor 1)
+\end{enumerate}
+
+For different types:
+\begin{itemize}
+    \item Integers: Convert to decimal string
+    \item Floats: Convert to decimal string with precision
+    \item Strings: Output directly
+    \item Vectors: Format as \texttt{[elem1, elem2, ...]}
+    \item Booleans: Output \texttt{TRUE} or \texttt{FALSE}
+\end{itemize}
+
+\subsubsection{Sequence Generation}
+
+The range operator \texttt{start:end} and \texttt{gen\_seq} runtime function:
+\begin{enumerate}
+    \item Calculate sequence length: \texttt{end - start + 1}
+    \item Allocate vector of integers
+    \item Fill array with values from \texttt{start} to \texttt{end}
+    \item Return vector struct
+\end{enumerate}
+
+Optimized implementation uses a simple loop without intermediate allocations.
+
+\subsection{WASI Integration}
+
+The runtime integrates with WASI (WebAssembly System Interface) for I/O:
+
+\begin{itemize}
+    \item \textbf{Import}: \texttt{fd\_write} from \texttt{wasi\_snapshot\_preview1}
+    \item \textbf{Signature}: \texttt{(i32, i32, i32, i32) -> i32}
+    \item \textbf{Parameters}: file descriptor, iovs pointer, iovs length, nwritten pointer
+    \item \textbf{Usage}: Output strings to stdout/stderr
+\end{itemize}
+
+The \texttt{\_start} function is exported as the entry point, compatible with WASI runtimes like \texttt{wasmtime}.
+
+\section{Implementation Details}
+
+\subsection{Compilation Limitations}
+
+Current implementation limitations:
+
+\begin{itemize}
+    \item \textbf{String operations}: Limited string manipulation functions
+    \item \textbf{Error handling}: No exception or error handling mechanism
+    \item \textbf{Standard library}: Minimal built-in function set
+    \item \textbf{I/O}: Only print output via WASI, no file I/O or input reading
+    \item \textbf{Numeric coercion}: Limited implicit type conversions
+    \item \textbf{Vector operations}: Subset of R's vector operations implemented
+    \item \textbf{List types}: Declared but not fully implemented
+\end{itemize}
+
+\subsection{Design Decisions}
+
+Key design decisions and rationale:
+
+\begin{itemize}
+    \item \textbf{Static typing}: Enables efficient ahead-of-time compilation and early error detection, trading off R's dynamic flexibility
+
+    \item \textbf{WebAssembly GC}: Using the GC proposal simplifies memory management and enables efficient object representation, though requiring newer WebAssembly runtimes
+
+    \item \textbf{Lexical-only scoping}: Only functions create scopes (not blocks), matching R semantics and simplifying closure implementation
+
+    \item \textbf{Typed function references}: Using typed funcrefs instead of function tables enables type-safe indirect calls and eliminates table management overhead
+
+    \item \textbf{Struct-based closures}: Representing closures as structs with explicit environments rather than using WebAssembly stack manipulation provides cleaner semantics
+
+    \item \textbf{Component-wise vector operations}: Inlining vector operations as loops rather than runtime calls improves performance for common operations
+
+    \item \textbf{Reference cells for mutable captures}: Using GC structs for mutably-captured variables (super-assignment) enables efficient closure semantics
+\end{itemize}
+
+\subsection{Performance Considerations}
+
+Optimization strategies employed:
+
+\begin{itemize}
+    \item \textbf{Type specialization}: Separate vector struct types for i32, f64, and anyref avoid runtime type checks
+
+    \item \textbf{Direct calls}: Known function calls use direct \texttt{call} instructions instead of slower indirect calls
+
+    \item \textbf{Local variable reuse}: Temporary variables reuse local slots when possible
+
+    \item \textbf{Inline vector operations}: Component-wise operations inlined rather than calling runtime functions
+
+    \item \textbf{Cached type indices}: Function signature type indices cached to avoid recreating identical types
+\end{itemize}
+
+\subsection{Testing Strategy}
+
+The compiler includes comprehensive testing:
+
+\begin{itemize}
+    \item \textbf{Unit tests}: Per-component tests for lexer, parser, type checker, and code generator
+    \item \textbf{Integration tests}: End-to-end compilation and execution tests in \texttt{data/} directory
+    \item \textbf{Comparison tests}: Output comparison against reference R interpreter (\texttt{translate\_and\_test.sh})
+    \item \textbf{Type system tests}: Tests for type inference, error detection, and function types
+    \item \textbf{Closure tests}: Tests for variable capture, nested closures, and super-assignment
+\end{itemize}
+
+Test organization:
+\begin{itemize}
+    \item \texttt{tests/lexer\_tests.rs}: Lexical analysis tests
+    \item \texttt{tests/parser\_tests.rs}: Parsing and AST construction tests
+    \item \texttt{tests/ir\_*.rs}: Type resolution and IR generation tests
+    \item \texttt{tests/wasm\_*.rs}: Code generation and execution tests
+    \item \texttt{data/*/}: Integration test programs organized by feature
+\end{itemize}
+
+\end{document}

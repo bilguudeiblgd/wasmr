@@ -455,7 +455,9 @@ impl WasmGenerator {
     pub(crate) fn gen_number(&mut self, func: &mut Function, _: &LocalContext, ty: &Type, numeric_string: &String) {
         match &ty {
             &Type::Int => {
-                let num = numeric_string.parse::<i32>().unwrap();
+                // Strip 'L' suffix if present (e.g., "42L" -> "42")
+                let clean_str = numeric_string.trim_end_matches('L');
+                let num = clean_str.parse::<i32>().unwrap();
                 func.instruction(&Instruction::I32Const(num))
             }
             &Type::Double => {

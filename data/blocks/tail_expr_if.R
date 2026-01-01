@@ -9,5 +9,5 @@ max_value <- function(a: int, b: int): int {
     }
 }
 
-result: int <- max_value(15, 8)
+result: int <- as.integer(max_value(15L, 8L))
 print(result)

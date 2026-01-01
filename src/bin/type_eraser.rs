@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use rty_compiler::{lexer, parser::Parser, type_eraser};
 
 fn main() -> io::Result<()> {

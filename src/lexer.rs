@@ -264,6 +264,7 @@ impl Lexer {
                 // safe because peek returned Some
                 let _ = self.consume(chars, &mut current);
             } else if ch == 'L' {
+                num_str.push(ch);  // Preserve the 'L' suffix for integer literals
                 let _ = self.consume(chars, &mut current);
                 break;
             }

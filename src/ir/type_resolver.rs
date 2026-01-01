@@ -75,6 +75,27 @@ impl TypeResolver {
                 return_type: Type::Vector(Type::Double.into()),
             }
         );
+        builtins.insert(
+            "as.integer".to_string(),
+            BuiltinDescriptor {
+                kind: BuiltinKind::AsInt,
+                return_type: Type::Any, // Actual return type depends on input (scalar or vector)
+            }
+        );
+        builtins.insert(
+            "as.double".to_string(),
+            BuiltinDescriptor {
+                kind: BuiltinKind::AsDouble,
+                return_type: Type::Any,
+            }
+        );
+        builtins.insert(
+            "as.logical".to_string(),
+            BuiltinDescriptor {
+                kind: BuiltinKind::AsLogical,
+                return_type: Type::Any,
+            }
+        );
 
         let mut function_param_defs = HashMap::new();
 
@@ -113,7 +134,7 @@ impl TypeResolver {
     }
 
     pub(crate) fn promote_numeric(&self, a: &Type, target: &Type) -> Type {
-        // Handle scalar numeric promotions
+        // Handle scalar numeric promotions only
         if Self::is_numeric(a) && Self::is_numeric(target) {
             return target.clone();
         }
@@ -123,12 +144,7 @@ impl TypeResolver {
             return target.clone();
         }
 
-        // Handle vector numeric promotions
-        if let (Type::Vector(a_elem), Type::Vector(target_elem)) = (a, target) {
-            if Self::is_numeric(a_elem) && Self::is_numeric(target_elem) {
-                return target.clone();
-            }
-        }
+        // NO vector numeric promotions - users must use explicit as.integer(), as.double(), etc.
 
         // No promotion available
         a.clone()

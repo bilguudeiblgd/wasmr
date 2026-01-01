@@ -6,8 +6,14 @@ use crate::ir::types::{IRBlock, IRExpr, IRExprKind, IRStmt, TyResult, TypeError}
 use crate::types::Type::Vector;
 use crate::types::{Param, ParamKind, Type};
 
-/// Type coercion helper - creates Cast nodes for implicit type conversions
-/// The actual conversion logic will be implemented in codegen (using runtime functions for vectors)
+/// Type coercion helper - creates Cast nodes for type conversions
+///
+/// Allows:
+/// - Scalar numeric promotions (Logical -> Int -> Double)
+/// - Vector element type conversions (for internal operations like comparisons)
+///
+/// Note: For variable assignments with incompatible vector types, the type checker
+/// will catch the error BEFORE calling ensure_ty by checking types_compatible().
 pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
     if e.ty == want {
         return e;
@@ -15,8 +21,8 @@ pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
 
     // Scalar numeric conversions
     match (&e.ty, &want) {
-        // Int <-> Double
-        (Type::Int, Type::Double) | (Type::Double, Type::Int) => {
+        // Int -> Double (promotion, safe)
+        (Type::Int, Type::Double) => {
             return IRExpr {
                 kind: IRExprKind::Cast {
                     expr: Box::new(e.clone()),
@@ -24,6 +30,19 @@ pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
                     to: want.clone(),
                 },
                 ty: want,
+            };
+        }
+        // Double -> Int (truncation conversion for scalars)
+        // Note: This allows scalar literal conversions like 1.0 -> 1
+        // Vector conversions are prevented by promote_numeric()
+        (Type::Double, Type::Int) => {
+            return IRExpr {
+                kind: IRExprKind::Cast {
+                    expr: Box::new(e.clone()),
+                    from: e.ty.clone(),
+                    to: Type::Int,
+                },
+                ty: Type::Int,
             };
         }
         // Double -> Logical (boolean casting from double)
@@ -71,6 +90,7 @@ pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
             };
         }
         // Vector conversions (element-wise casting)
+        // Used by vector comparisons and binary operations
         // The codegen will generate calls to runtime functions that loop through elements
         (Type::Vector(from_elem), Type::Vector(to_elem)) if from_elem != to_elem => {
             // Allow vector<int> <-> vector<double> and logical promotions
@@ -87,7 +107,6 @@ pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
                         ty: want,
                     };
                 }
-                // Could extend to other vector conversions in the future
                 _ => {}
             }
         }
@@ -100,13 +119,13 @@ pub(super) fn ensure_ty(e: IRExpr, want: Type) -> IRExpr {
 
 impl<'a> LowerCtx<'a> {
     /// Lower a list of AST statements to IR statements
-    pub(super) fn lower_block(&mut self, stmts: Vec<AstStmt>) -> TyResult<Vec<IRStmt>> {
-        let mut out = Vec::with_capacity(stmts.len());
-        for s in stmts {
-            out.push(self.lower_stmt(s)?);
-        }
-        Ok(out)
-    }
+    // pub(super) fn lower_block(&mut self, stmts: Vec<AstStmt>) -> TyResult<Vec<IRStmt>> {
+    //     let mut out = Vec::with_capacity(stmts.len());
+    //     for s in stmts {
+    //         out.push(self.lower_stmt(s)?);
+    //     }
+    //     Ok(out)
+    // }
 
     /// Lower a Block (statements + optional tail expression) to IRBlock
     pub(super) fn lower_ast_block(&mut self, block: Block) -> TyResult<IRBlock> {

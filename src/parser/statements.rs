@@ -219,41 +219,6 @@ impl Parser {
         })
     }
 
-    pub(crate) fn parse_assignment(&mut self) -> Result<Stmt, ParseError> {
-        let name = match self.peek() {
-            Some(Token::Identifier(s)) => s.clone(),
-            Some(tok) => return Err(ParseError::Unexpected(tok.clone())),
-            None => return Err(ParseError::Eof),
-        };
-        self.advance(); // consume identifier
-
-        let x_type = match self.peek() {
-            Some(Token::Colon) => {
-                self.consume(&Token::Colon)?;
-                Some(self.parse_x_type()?)
-            }
-            _ => None,
-        };
-
-        // Check for <<- or <-
-        let is_super_assign = if self.match_token(&Token::SuperAssignArrow) {
-            true
-        } else if self.match_token(&Token::AssignArrow) {
-            false
-        } else {
-            return Err(ParseError::Expected(Token::AssignArrow));
-        };
-        let value = self.parse_expression()?;
-        Ok(Stmt::VarAssign {
-            name,
-            x_type,
-            value,
-            is_super_assign,
-        })
-    }
-
-    // removed parse_function_def: function definitions are now expressions parsed in parse_primary
-
     pub(crate) fn parse_x_type(&mut self) -> Result<Type, ParseError> {
         // Try parsing as function type with arrow syntax
         // This handles: float -> float, float, float -> int, (float -> float) -> int

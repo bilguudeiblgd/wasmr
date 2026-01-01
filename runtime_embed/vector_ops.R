@@ -217,8 +217,7 @@ system_cast_vec_int_to_vec_double <- function(vec: vector<int>): vector<double> 
     result: vector<double> <- vec(length=n, mode="double")
 
     for(i in 1:n) {
-        tmp: double <- vec[i]  # Implicit scalar int->double cast
-        result[i] <- tmp
+        result[i] <- vec[i]
     }
 
     return(result)
@@ -230,8 +229,7 @@ system_cast_vec_double_to_vec_int <- function(vec: vector<double>): vector<int> 
     result: vector<int> <- vec(length=n, mode="int")
 
     for(i in 1:n) {
-        tmp: int <- vec[i]  # Implicit scalar double->int cast (truncation)
-        result[i] <- tmp
+        result[i] <- as.integer(vec[i])
     }
 
     return(result)

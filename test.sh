@@ -31,6 +31,8 @@ echo "  Rty Compiler Test Suite"
 echo "========================================="
 echo ""
 
+/Users/bilguudei.baljinnyam/.cargo/bin/cargo run --color=always --package Rty_compiler --bin Rty_compiler --profile dev
+
 # Find all .R files recursively in data_R/ directory (plain R versions for testing)
 while IFS= read -r -d '' plain_r_file; do
     # Compute relative path from data_R/

@@ -7,7 +7,7 @@ use std::io;
 use std::path::PathBuf;
 
 use crate::ast::Stmt as AstStmt;
-use crate::backend::{compile_to_wasm, compile_to_wasm_ir};
+use crate::backend::{compile_to_wasm_ir};
 use crate::ir::IRProgram;
 
 use super::conversion::wasm_to_wat;
