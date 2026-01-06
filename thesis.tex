@@ -12,6 +12,7 @@
 \usepackage{float}
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds}
+\usepackage{dirtree}
 
 \geometry{margin=1in}
 
@@ -1006,6 +1007,105 @@ The Rty compiler demonstrates that combining R's intuitive syntax with static ty
 \end{itemize}
 
 Rty shows that static typing and R-like syntax are compatible, opening possibilities for safer and faster data science tools that leverage WebAssembly's portability and performance.
+
+\chapter{Contents of the attachment}
+\label{source-code-structure}
+
+The attached media contains the complete Rty compiler implementation, test suite, and thesis sources. The directory structure is organized as follows:
+
+\dirtree{%
+.1 /.
+.2 README.md\DTcomment{project overview and build instructions}.
+.2 Cargo.toml\DTcomment{Rust package manifest and dependencies}.
+.2 CLAUDE.md\DTcomment{development guidelines and architecture documentation}.
+.2 src\DTcomment{compiler source code ($\sim$6,000 lines)}.
+.3 lib.rs\DTcomment{library entry point and compilation orchestration}.
+.3 lexer.rs\DTcomment{lexical analysis (350 lines)}.
+.3 ast.rs\DTcomment{abstract syntax tree definitions}.
+.3 types\DTcomment{cross-cutting type system}.
+.4 mod.rs\DTcomment{type definitions (Type, Param enums)}.
+.4 ast\_types.rs\DTcomment{AST-level type representations}.
+.4 builtins.rs\DTcomment{built-in type recognition}.
+.3 parser\DTcomment{syntactic analysis (1,200 lines)}.
+.4 mod.rs\DTcomment{recursive descent parser}.
+.4 expr.rs\DTcomment{expression parsing}.
+.4 stmt.rs\DTcomment{statement parsing}.
+.3 ir\DTcomment{intermediate representation (2,000 lines)}.
+.4 mod.rs\DTcomment{IR types and type resolver}.
+.4 types.rs\DTcomment{typed IR expression/statement nodes}.
+.4 type\_resolver.rs\DTcomment{type inference and checking}.
+.4 lowering\DTcomment{AST to IR lowering}.
+.5 mod.rs\DTcomment{lowering context}.
+.5 expr.rs\DTcomment{expression lowering}.
+.5 stmt.rs\DTcomment{statement lowering}.
+.5 builtin.rs\DTcomment{built-in function handling}.
+.5 mangling.rs\DTcomment{function name mangling for overloading}.
+.4 passes\DTcomment{IR transformation passes}.
+.5 mod.rs\DTcomment{pass manager}.
+.5 variable\_collection.rs\DTcomment{WASM local allocation}.
+.5 captured\_vars.rs\DTcomment{closure capture analysis}.
+.5 function\_flattening.rs\DTcomment{lambda lifting}.
+.3 backend\DTcomment{WebAssembly code generation (2,500 lines)}.
+.4 mod.rs\DTcomment{WASM generator and module construction}.
+.4 context.rs\DTcomment{local context for code emission}.
+.4 emit\DTcomment{code emission by construct}.
+.5 mod.rs\DTcomment{emission coordination}.
+.5 expressions.rs\DTcomment{expression code generation}.
+.5 statements.rs\DTcomment{statement code generation}.
+.5 builtins.rs\DTcomment{built-in function implementations}.
+.5 binary\_ops.rs\DTcomment{binary operator emission}.
+.5 functions.rs\DTcomment{function compilation}.
+.5 ref\_cells.rs\DTcomment{reference cell operations}.
+.4 wasm\DTcomment{WASM-specific utilities}.
+.5 mod.rs\DTcomment{WASM helpers}.
+.5 types.rs\DTcomment{type mapping (Rty $\to$ WASM)}.
+.5 memory.rs\DTcomment{memory layout and initialization}.
+.5 runtime.rs\DTcomment{runtime function injection}.
+.3 driver\DTcomment{compilation orchestration (500 lines)}.
+.4 mod.rs\DTcomment{driver module}.
+.4 pipeline.rs\DTcomment{compilation pipeline}.
+.4 io.rs\DTcomment{file I/O operations}.
+.4 conversion.rs\DTcomment{format conversion (WASM $\leftrightarrow$ WAT)}.
+.4 runtime.rs\DTcomment{runtime library loading}.
+.2 runtime\_embed\DTcomment{runtime library in R}.
+.3 numeric\_ops.R\DTcomment{numeric operations (min, max, abs)}.
+.3 utility\_ops.R\DTcomment{utility functions (seq, sum, rep)}.
+.3 vector\_ops.R\DTcomment{vector operations}.
+.2 tests\DTcomment{Rust unit and integration tests ($\sim$2,500 lines)}.
+.3 lexer\_tests.rs\DTcomment{lexer validation}.
+.3 parser\_tests.rs\DTcomment{parser correctness}.
+.3 parser\_function\_type\_tests.rs\DTcomment{function type parsing}.
+.3 ir\_builtin\_tests.rs\DTcomment{built-in type resolution}.
+.3 ir\_scoping\_tests.rs\DTcomment{scoping and closures}.
+.3 first\_class\_function\_tests.rs\DTcomment{higher-order functions}.
+.3 wasm\_codegen\_smoke.rs\DTcomment{code generation smoke tests}.
+.3 wasm\_write\_out.rs\DTcomment{end-to-end compilation}.
+.2 data\DTcomment{example R programs for testing}.
+.3 basic\DTcomment{arithmetic and basic operations}.
+.3 types\DTcomment{type inference and casting}.
+.3 operators\DTcomment{binary and comparison operators}.
+.3 control\_flow\DTcomment{if, while, for constructs}.
+.3 functions\DTcomment{function definitions and calls}.
+.3 closures\DTcomment{closure and capture tests}.
+.3 vectors\DTcomment{vector operations}.
+.3 nullable\DTcomment{nullable type tests}.
+.2 benchmarks\DTcomment{performance benchmarks}.
+.3 1\_integer\_sum.R.
+.3 2\_vector\_addition.R.
+.3 3\_fibonacci.R.
+.2 test.sh\DTcomment{end-to-end validation script}.
+.2 translate\_and\_test.sh\DTcomment{cross-validation with native R}.
+.2 measure\_compile\_time.sh\DTcomment{compilation time measurement}.
+.2 thesis\DTcomment{thesis LaTeX sources}.
+.3 thesis.tex\DTcomment{main thesis document}.
+.3 presentation.tex\DTcomment{defense presentation}.
+.2 out\DTcomment{compiler output directory (generated)}.
+.3 *.wasm\DTcomment{compiled WebAssembly modules}.
+.3 *.wat\DTcomment{WebAssembly text format}.
+}
+
+The complete source code is also available at:
+\url{https://github.com/yourusername/Rty_compiler}
 
 \begin{thebibliography}{9}
 
