@@ -391,6 +391,38 @@ impl<'a> LowerCtx<'a> {
                     ty: result_type,
                 })
             }
+            BuiltinKind::Sqrt => {
+                // sqrt(x) computes square root, returns double
+                if args.len() != 1 {
+                    return Err(TypeError::ArityMismatch {
+                        func: name.to_string(),
+                        expected: 1,
+                        found: args.len(),
+                    });
+                }
+
+                let arg = &args[0];
+                // Accept Int or Double, convert to Double if needed
+                let converted_arg = match &arg.ty {
+                    Type::Int => ensure_ty(arg.clone(), Type::Double, false),
+                    Type::Double => arg.clone(),
+                    _ => {
+                        return Err(TypeError::TypeMismatch {
+                            expected: Type::Double,
+                            found: arg.ty.clone(),
+                            context: format!("sqrt() requires numeric scalar (int or double)"),
+                        });
+                    }
+                };
+
+                Ok(IRExpr {
+                    kind: IRExprKind::BuiltinCall {
+                        builtin: kind,
+                        args: vec![converted_arg],
+                    },
+                    ty: Type::Double,
+                })
+            }
         }
     }
 }

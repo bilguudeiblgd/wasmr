@@ -61,6 +61,7 @@ pub enum BuiltinKind {
     AsInt,
     AsDouble,
     AsLogical,
+    Sqrt,
 }
 
 #[derive(Debug, Clone, PartialEq)]

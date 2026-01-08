@@ -340,6 +340,19 @@ impl WasmGenerator {
                     }
                 }
             }
+            BuiltinKind::Sqrt => {
+                // sqrt(x) computes square root using WASM f64.sqrt instruction
+                // The lowering pass ensures the argument is already converted to Double
+                if args.len() != 1 {
+                    return;
+                }
+
+                // Generate the argument (already converted to Double by lowering)
+                self.gen_expr(func, ctx, &args[0]);
+
+                // Emit WASM f64.sqrt instruction
+                func.instruction(&Instruction::F64Sqrt);
+            }
         }
     }
 }

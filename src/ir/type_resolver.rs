@@ -96,6 +96,13 @@ impl TypeResolver {
                 return_type: Type::Any,
             }
         );
+        builtins.insert(
+            "sqrt".to_string(),
+            BuiltinDescriptor {
+                kind: BuiltinKind::Sqrt,
+                return_type: Type::Double,
+            }
+        );
 
         let mut function_param_defs = HashMap::new();
 
